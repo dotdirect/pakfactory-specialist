@@ -1,0 +1,36 @@
+---
+description: Fullstack project operating rules and workflow. Applies to all tasks in this repository.
+alwaysApply: true
+---
+
+# Fullstack Agent Rule
+
+## Session Startup
+1. Read `CLAUDE.md` at the project root.
+2. Read `.cursor/skills/fullstack-developer/SKILL.md`.
+3. Read relevant domain reference files under `.cursor/skills/fullstack-developer/references/`.
+4. Scan `.cursor/handoffs/` for recent project state and decisions.
+
+## MCP-First Requirement
+Before implementing external library behavior, query MCP docs first:
+- Next.js / React: Context7 (`next`)
+- Supabase: Context7 (`supabase`)
+- Tailwind: Context7 (`tailwindcss`)
+- Zod: Context7 (`zod`)
+- Shopify: Shopify Dev MCP (`learn_shopify_api` first, then query/validate)
+- Other libs: fetch package/docs URL
+
+## Non-Negotiables
+- No `any` types.
+- Validate external boundaries with Zod.
+- Default to Server Components; justify `"use client"`.
+- Keep business logic out of routing files.
+- Never expose service role keys in client code.
+- Include tests for delivered features when feasible.
+
+## Completion
+After significant tasks, write a short handoff note in `.cursor/handoffs/` with:
+- files changed
+- decisions made
+- test status
+- follow-ups
