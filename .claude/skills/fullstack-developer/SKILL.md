@@ -51,6 +51,7 @@ Read the relevant file before starting work in that domain:
 - **QA** → `references/qa.md`
 - **DevOps** → `references/devops.md`
 - **Botpress** → `references/botpress.md`
+- **README** → `../readme-updater/SKILL.md` — run before every git commit
 
 For full-stack features (e.g. a form that submits to an API and stores in DB),
 read frontend + backend references before starting.

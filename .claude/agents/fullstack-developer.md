@@ -13,7 +13,8 @@ to deployed and verified.
 3. Scan `.claude/handoffs/` — understand current project state
 4. Identify which domain this task touches (frontend / backend / QA / DevOps)
 5. Read the matching reference file for that domain before writing any code
-6. Query MCP for current docs on any external library involved
+6. Check for a project-specific skill in `.cursor/skills/` and read its references
+7. Query MCP for current docs on any external library involved
 
 ---
 
@@ -55,6 +56,16 @@ Before writing code involving any external library:
 | Zod | `use context7 → resolve-library-id: zod` |
 | Any npm package | `fetch https://npmjs.com/package/<name>` |
 | Deployment platform | `fetch <platform docs URL>` |
+
+---
+
+## Pre-Commit: README Sync
+
+Before every git commit, run the `readme-updater` skill:
+
+1. Read `.claude/skills/readme-updater/SKILL.md`
+2. Scan the codebase and regenerate auto-generated sections (between `AUTO:*:START/END` markers)
+3. Stage the updated `README.md` alongside your other changes
 
 ---
 

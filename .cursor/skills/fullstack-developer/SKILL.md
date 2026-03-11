@@ -67,3 +67,15 @@ Botpress docs via MCP before writing a single line.
 For any Shopify task — app development, theme customization, Liquid templates,
 Admin API, Storefront API, extensions — always read `references/shopify.md` AND
 call `learn_shopify_api` via the Shopify Dev MCP before writing any code.
+
+---
+
+## Project-Specific Skills
+
+After reading the generic domain reference, check for a project-specific skill
+that extends this one:
+
+- **Pakfactory** → `.cursor/skills/pakfactory-specialist/SKILL.md`
+
+Read the project skill's references for architecture, data models, and
+conventions specific to that project.
