@@ -4,6 +4,7 @@ import { getModel } from '@/lib/agents/model'
 import { specialistAgentConfig, specialistAgentTools } from '@/lib/agents/specialist-agent'
 import { buildSpecialistPrompt } from '@/lib/prompts/specialist-agent'
 import type { ProjectAiChatMessage } from '@/types/project-ai-chat'
+import { ProjectAiHelpHandoffSchema, type ProjectAiHelpHandoff } from '@/types/project-ai-handoff'
 
 export const runtime = 'edge'
 
@@ -33,11 +34,15 @@ async function projectAiCacheKey(
   lastUserText: string,
   missingFields: string[] | undefined,
   currentPhase: string | undefined,
+  handoffContext: ProjectAiHelpHandoff | undefined,
 ): Promise<string> {
   const normalized = JSON.stringify([
     lastUserText.trim().toLowerCase().replace(/\s+/g, ' '),
     [...(missingFields ?? [])].sort(),
     currentPhase ?? '',
+    handoffContext?.source ?? '',
+    handoffContext?.lastUserMessage.trim().toLowerCase().replace(/\s+/g, ' ') ?? '',
+    handoffContext?.lastAssistantMessage?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '',
   ])
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -78,6 +83,7 @@ const ChatRequestSchema = z.object({
   messages: z.unknown(),
   missingFields: z.array(z.string()).optional(),
   currentPhase: z.string().optional(),
+  handoffContext: ProjectAiHelpHandoffSchema.optional(),
 })
 
 export async function POST(req: Request) {
@@ -120,6 +126,7 @@ export async function POST(req: Request) {
     lastUserText,
     result.data.missingFields,
     result.data.currentPhase,
+    result.data.handoffContext,
   )
   const now = Date.now()
   const cached = projectAiStreamCache.get(cacheKey)
@@ -138,7 +145,11 @@ export async function POST(req: Request) {
   // SCALE: This route receives missingFields and currentPhase from the client. System prompt is built here; scaling = more fields in client payload and prompt template.
   const resultText = streamText({
     model: getModel(),
-    system: buildSpecialistPrompt(result.data.missingFields, result.data.currentPhase),
+    system: buildSpecialistPrompt(
+      result.data.missingFields,
+      result.data.currentPhase,
+      result.data.handoffContext,
+    ),
     messages: modelMessages.slice(-6),
     ...specialistAgentConfig,
   })

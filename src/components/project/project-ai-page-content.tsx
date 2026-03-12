@@ -30,39 +30,16 @@ function ProjectAiRightPanel() {
 function ProjectAiContent() {
     const searchParams = useSearchParams();
     const fromHelp = searchParams.get('from') === 'help';
-    const [briefVisible, setBriefVisible] = useState(!fromHelp);
-
-    useEffect(() => {
-        if (fromHelp) {
-            const timer = setTimeout(() => setBriefVisible(true), 100);
-            return () => clearTimeout(timer);
-        }
-    }, [fromHelp]);
-
-    if (fromHelp) {
-        return (
-            <div className="flex h-[calc(100vh-3.5rem)]">
-                <div className="flex-1 h-full overflow-hidden">
-                    <ProjectAiChatPanel />
-                </div>
-                <div
-                    className={`h-full overflow-hidden bg-muted/30 transition-all duration-500 ease-out ${
-                        briefVisible
-                            ? 'w-1/2 opacity-100 translate-y-0'
-                            : 'w-0 opacity-0 translate-y-8'
-                    }`}
-                >
-                    <div className="h-full min-w-[400px]">
-                        <ProjectAiRightPanel />
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <DualPanelLayout
-            leftPanel={<ProjectAiChatPanel />}
+            useWindowScroll
+            leftPanel={
+                <ProjectAiChatPanel
+                    fromHelp={fromHelp}
+                    useWindowScroll
+                />
+            }
             rightPanel={<ProjectAiRightPanel />}
         />
     );

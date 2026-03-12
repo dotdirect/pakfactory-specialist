@@ -16,10 +16,13 @@ import {
     getCurrentPhase,
     getMissingFieldsInPhase,
 } from '@/lib/brief-collection';
+import {consumeProjectAiHelpHandoff} from '@/lib/project-ai-help-handoff';
+import {useAuthStore} from '@/stores/auth-store';
 import {useBriefStore} from '@/stores/brief-store';
 import type {BriefEvent} from '@/types/brief-events';
 import type {Message} from '@/types/conversation';
 import type {ProjectAiChatMessage} from '@/types/project-ai-chat';
+import type {ProjectAiHelpHandoff} from '@/types/project-ai-handoff';
 
 type SyncProjectBriefToolPart = Extract<
     ProjectAiChatMessage['parts'][number],
@@ -40,6 +43,46 @@ function toDisplayMessage(message: ProjectAiChatMessage): Message {
         content: getMessageText(message),
         createdAt: new Date(),
     };
+}
+
+function hasContactSignal(value: string | undefined) {
+    if (!value) return false;
+    return (
+        /@/.test(value) ||
+        /\b(name|email|contact|company|phone)\b/i.test(value)
+    );
+}
+
+function buildGreetingMessage(
+    chatId: string,
+    fromHelp: boolean,
+    isAuthenticated: boolean,
+    userName: string | null,
+): ProjectAiChatMessage {
+    let text: string;
+    if (fromHelp) {
+        text =
+            "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.";
+    } else if (isAuthenticated && userName?.trim()) {
+        text = `Hi ${userName.trim()}! I'm Anthony, your packaging specialist. Let's build your quote together.`;
+    } else {
+        text =
+            "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together. Before we start can I get your name and email.";
+    }
+    return {
+        id: `${chatId}-greeting`,
+        role: 'assistant',
+        parts: [{ type: 'text', text, state: 'done' }],
+    };
+}
+
+function buildHelpKickoffMessage(handoff: ProjectAiHelpHandoff) {
+    const sharedContactContext =
+        hasContactSignal(handoff.lastUserMessage) ||
+        hasContactSignal(handoff.lastAssistantMessage);
+    return sharedContactContext
+        ? "I brought over the context from your help conversation so we can keep moving. It looks like you've already shared some contact details, so what project details should we confirm next for the quote?"
+        : "I brought over the context from your help conversation so we can keep building your quote. Before we continue, could you share your name and email?";
 }
 
 function isSyncProjectBriefToolPart(
@@ -105,37 +148,94 @@ function shouldApplyEvent(
     }
 }
 
-export function ProjectAiChatPanel() {
+interface ProjectAiChatPanelProps {
+    fromHelp?: boolean;
+    /** When true, the transcript grows and the window scrolls; MessageList uses scrollMode="window". */
+    useWindowScroll?: boolean;
+}
+
+export function ProjectAiChatPanel({
+    fromHelp = false,
+    useWindowScroll = false,
+}: ProjectAiChatPanelProps) {
     const [chatId] = useState(() => crypto.randomUUID());
+    const [helpHandoff, setHelpHandoff] = useState<ProjectAiHelpHandoff | null>(
+        null,
+    );
+    const [handoffReady, setHandoffReady] = useState(!fromHelp);
+    const [isBootstrapping, setIsBootstrapping] = useState(false);
+    const hasSentVisibleUserMessageRef = useRef(false);
+    const didBootstrapFromHelpRef = useRef(false);
     const processedToolCallIdsRef = useRef<Set<string>>(new Set());
 
+    const authStatus = useAuthStore((state) => state.status);
+    const authUser = useAuthStore((state) => state.user);
     const initializeBrief = useBriefStore((state) => state.initializeBrief);
     const handleBriefEvent = useBriefStore((state) => state.handleBriefEvent);
     const setNotes = useBriefStore((state) => state.setNotes);
     const brief = useBriefStore((state) => state.brief);
 
-    const greetingMessage = useMemo<ProjectAiChatMessage>(
-        () => ({
-            id: `${chatId}-greeting`,
-            role: 'assistant',
-            parts: [
-                {
-                    type: 'text',
-                    text: "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.",
-                    state: 'done',
-                },
-            ],
-        }),
-        [chatId],
-    );
+    const isAuthenticated = authStatus === 'authenticated';
+    const userName = authUser?.name ?? null;
 
-    const {messages, sendMessage, status} = useChat<ProjectAiChatMessage>({
+    const initialMessagesRef = useRef<ProjectAiChatMessage[] | null>(null);
+    if (initialMessagesRef.current === null) {
+        initialMessagesRef.current = [
+            buildGreetingMessage(chatId, fromHelp, isAuthenticated, userName),
+        ];
+    }
+
+    const {messages, sendMessage, setMessages, status} =
+        useChat<ProjectAiChatMessage>({
         id: chatId,
-        messages: [greetingMessage],
+        messages: initialMessagesRef.current,
         transport: new DefaultChatTransport<ProjectAiChatMessage>({
             api: '/api/project-ai/chat',
         }),
     });
+
+    useEffect(() => {
+        if (!fromHelp) {
+            setHelpHandoff(null);
+            setHandoffReady(true);
+            setIsBootstrapping(false);
+            return;
+        }
+        setHelpHandoff(consumeProjectAiHelpHandoff());
+        setHandoffReady(true);
+    }, [fromHelp]);
+
+    useEffect(() => {
+        if (!fromHelp || !handoffReady || !helpHandoff) return;
+        if (didBootstrapFromHelpRef.current) return;
+
+        didBootstrapFromHelpRef.current = true;
+        setIsBootstrapping(true);
+
+        const kickoffId = `${chatId}-help-kickoff`;
+        const kickoffMessage: ProjectAiChatMessage = {
+            id: kickoffId,
+            role: 'assistant',
+            parts: [
+                {
+                    type: 'text',
+                    text: buildHelpKickoffMessage(helpHandoff),
+                    state: 'done',
+                },
+            ],
+        };
+
+        const timer = window.setTimeout(() => {
+            setMessages((prev) => {
+                if (prev.some((m) => m.id === kickoffId)) return prev;
+                if (prev.some((m) => m.role === 'user')) return prev;
+                return [...prev, kickoffMessage];
+            });
+            setIsBootstrapping(false);
+        }, 500);
+
+        return () => window.clearTimeout(timer);
+    }, [chatId, fromHelp, handoffReady, helpHandoff, setMessages]);
 
     useEffect(() => {
         if (brief?.conversationId !== chatId) {
@@ -183,17 +283,24 @@ export function ProjectAiChatPanel() {
 
     const handleSend = useCallback(
         async (content: string) => {
+            const hasSentVisibleUserMessage =
+                hasSentVisibleUserMessageRef.current;
+            hasSentVisibleUserMessageRef.current = true;
+            const shouldIncludeHandoff =
+                fromHelp && !hasSentVisibleUserMessage ? helpHandoff : undefined;
+
             await sendMessage(
                 {text: content},
                 {
                     body: {
                         currentPhase,
+                        handoffContext: shouldIncludeHandoff,
                         missingFields,
                     },
                 },
             );
         },
-        [sendMessage, currentPhase, missingFields],
+        [sendMessage, currentPhase, fromHelp, helpHandoff, missingFields],
     );
 
     const helpMessagesById = useMemo(
@@ -262,16 +369,25 @@ export function ProjectAiChatPanel() {
         [helpMessagesById],
     );
 
-    const isTyping = status === 'submitted' || status === 'streaming';
+    const isTyping =
+        status === 'submitted' || status === 'streaming' || isBootstrapping;
+    const inputDisabled = isTyping || !handoffReady;
 
     return (
-        <Card className="flex h-full min-h-0 flex-col rounded-none border-0 bg-transparent">
+        <Card
+            className={
+                useWindowScroll
+                    ? 'flex min-h-0 flex-col rounded-none border-0 bg-transparent'
+                    : 'flex h-full min-h-0 flex-col rounded-none border-0 bg-transparent'
+            }
+        >
             <MessageList
                 messages={displayMessages}
                 isTyping={isTyping}
                 renderAfterMessage={renderAfterMessage}
+                scrollMode={useWindowScroll ? 'window' : 'panel'}
             />
-            <ChatInput onSend={handleSend} disabled={isTyping} />
+            <ChatInput onSend={handleSend} disabled={inputDisabled} />
         </Card>
     );
 }

@@ -14,6 +14,8 @@ import {
 import {Separator} from '@/components/ui/separator';
 import {isTextUIPart} from 'ai';
 import {BookOpen} from 'lucide-react';
+import {storeProjectAiHelpHandoff} from '@/lib/project-ai-help-handoff';
+import type {ProjectAiHelpHandoff} from '@/types/project-ai-handoff';
 import type {HelpChatMessage} from '@/types/help-chat';
 import {isSourceUrlPart} from '@/types/help-chat';
 import {HelpSearchInput} from './help-search-input';
@@ -58,6 +60,37 @@ function renderMessageParagraphs(content: string) {
 
 function getSourceParts(message: HelpChatMessage) {
     return message.parts?.filter(isSourceUrlPart) ?? [];
+}
+
+function buildProjectAiHelpHandoff(
+    messages: HelpChatMessage[],
+    assistantMessageId: string,
+): ProjectAiHelpHandoff | null {
+    const assistantIndex = messages.findIndex(
+        (m) => m.id === assistantMessageId,
+    );
+    if (assistantIndex === -1) return null;
+
+    const assistantMessage = messages[assistantIndex];
+    if (assistantMessage?.role !== 'assistant') return null;
+
+    const lastUserMessage = messages
+        .slice(0, assistantIndex)
+        .reverse()
+        .find((m) => m.role === 'user');
+    const lastUserText = lastUserMessage
+        ? getMessageText(lastUserMessage).trim()
+        : '';
+    const lastAssistantText = getMessageText(assistantMessage).trim();
+
+    if (!lastUserText) return null;
+
+    return {
+        source: 'help',
+        lastUserMessage: lastUserText,
+        lastAssistantMessage: lastAssistantText || undefined,
+        capturedAt: new Date().toISOString(),
+    };
 }
 
 function renderSourcesBlock(message: HelpChatMessage) {
@@ -176,10 +209,17 @@ export function HelpConversation({
     );
 
     const handleNavigateToRoute = useCallback(
-        (route: string) => {
+        (route: string, assistantMessageId?: string) => {
+            if (route.startsWith('/project-ai') && assistantMessageId) {
+                const handoff = buildProjectAiHelpHandoff(
+                    visibleMessages,
+                    assistantMessageId,
+                );
+                if (handoff) storeProjectAiHelpHandoff(handoff);
+            }
             router.push(route);
         },
-        [router],
+        [router, visibleMessages],
     );
 
     const handleKeepChatting = useCallback((toolCallId: string) => {
@@ -224,13 +264,16 @@ export function HelpConversation({
                                     {part.output.description}
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="flex flex-wrap gap-2 px-4 pb-4">
+                                <CardContent className="flex flex-wrap gap-2 px-4 pb-4">
                                 {part.output.options.map((option) => (
                                     <Button
                                         key={option.route}
                                         variant={option.variant}
                                         onClick={() =>
-                                            handleNavigateToRoute(option.route)
+                                            handleNavigateToRoute(
+                                                option.route,
+                                                sourceMessage.id,
+                                            )
                                         }
                                     >
                                         {option.label}

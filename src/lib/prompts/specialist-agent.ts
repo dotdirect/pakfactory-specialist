@@ -1,4 +1,5 @@
 import { syncProjectBriefGuidance } from '@/lib/tools/sync-project-brief'
+import type { ProjectAiHelpHandoff } from '@/types/project-ai-handoff'
 
 // SCALE: Prompt receives currentPhase and missingFields from API. To change what the AI focuses on, adjust the phased hint text and/or the brief-collection config that produces missingFields.
 
@@ -31,9 +32,25 @@ Phase logic:
 4. Visual → Offer to generate a sample preview image (can be deferred).
 5. Completion → Collect dimensions, quantity, specs for final quote.
 
+If identity fields are missing (name, email, etc.), ask for name and email first before other details.
 Focus on completing the current phase before moving forward.
 If the user volunteers info from a later phase, capture it but guide back to current phase gaps.
 `
+
+function buildHandoffHint(handoffContext?: ProjectAiHelpHandoff): string {
+  if (!handoffContext) return ''
+
+  return `
+
+HELP HANDOFF CONTEXT:
+- The user just arrived from the Help chat.
+- Use this as background context so they do not have to repeat themselves.
+- Do not claim to remember a visible transcript that is not shown in this UI.
+- If the handoff seems incomplete or ambiguous, briefly confirm instead of assuming.
+- Last help user message: ${handoffContext.lastUserMessage}
+- Last help assistant reply: ${handoffContext.lastAssistantMessage ?? 'Not available'}
+`
+}
 
 /**
  * Returns the system prompt, optionally extended with phased hint and missing fields.
@@ -41,6 +58,7 @@ If the user volunteers info from a later phase, capture it but guide back to cur
 export function buildSpecialistPrompt(
   missingFields?: string[],
   currentPhase?: string,
+  handoffContext?: ProjectAiHelpHandoff,
 ): string {
   const phase = currentPhase ?? '1. Identity'
   const missing = missingFields?.length
@@ -51,13 +69,15 @@ export function buildSpecialistPrompt(
     '{missingFields}',
     missing,
   )
+  const handoffBlock = buildHandoffHint(handoffContext)
 
   if (!missingFields?.length) {
     return (
       BASE_PROMPT +
+      handoffBlock +
       phasedBlock +
       '\n\nAll key fields for the current phase are collected. Confirm with the customer and move to the next phase or offer next steps.'
     )
   }
-  return BASE_PROMPT + phasedBlock
+  return BASE_PROMPT + handoffBlock + phasedBlock
 }
