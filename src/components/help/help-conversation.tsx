@@ -17,6 +17,8 @@ import {BookOpen} from 'lucide-react';
 import type {HelpChatMessage} from '@/types/help-chat';
 import {isSourceUrlPart} from '@/types/help-chat';
 import {HelpSearchInput} from './help-search-input';
+import {PricingCalculatorUI} from './pricing-calculator-ui';
+import {AgentDisclaimer} from '@/components/agent/agent-disclaimer';
 
 interface HelpConversationProps {
     initialQuestion: string;
@@ -26,6 +28,11 @@ interface HelpConversationProps {
 type ProjectInquiryToolPart = Extract<
     HelpChatMessage['parts'][number],
     {type: 'tool-start_project_inquiry'; state: 'output-available'}
+>;
+
+type PricingCalculatorToolPart = Extract<
+    HelpChatMessage['parts'][number],
+    {type: 'tool-show_pricing_calculator'; state: 'output-available'}
 >;
 
 function getMessageText(message: HelpChatMessage) {
@@ -40,6 +47,15 @@ function isProjectInquiryToolPart(
 ): part is ProjectInquiryToolPart {
     return (
         part.type === 'tool-start_project_inquiry' &&
+        part.state === 'output-available'
+    );
+}
+
+function isPricingCalculatorToolPart(
+    part: HelpChatMessage['parts'][number],
+): part is PricingCalculatorToolPart {
+    return (
+        part.type === 'tool-show_pricing_calculator' &&
         part.state === 'output-available'
     );
 }
@@ -122,7 +138,9 @@ export function HelpConversation({
     );
 
     const visibleMessages = useMemo(() => {
-        const base = hasInitialQuestion ? messages : [greetingMessage, ...messages];
+        const base = hasInitialQuestion
+            ? messages
+            : [greetingMessage, ...messages];
         return base.filter((m) => m.role !== 'system');
     }, [hasInitialQuestion, greetingMessage, messages]);
 
@@ -130,7 +148,7 @@ export function HelpConversation({
         const userMessage: HelpChatMessage = {
             id: crypto.randomUUID(),
             role: 'user',
-            parts: [{ type: 'text', text: question, state: 'done' }],
+            parts: [{type: 'text', text: question, state: 'done'}],
         };
         setMessages((prev) => [...prev, userMessage]);
         setStatus('submitted');
@@ -139,19 +157,24 @@ export function HelpConversation({
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question }),
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({question}),
             });
             const data = await res.json();
 
             if (!res.ok) {
-                setError(data?.error ?? 'Something went wrong. Please try again.');
+                setError(
+                    data?.error ?? 'Something went wrong. Please try again.',
+                );
                 setStatus('idle');
                 return;
             }
 
             if (data.message) {
-                setMessages((prev) => [...prev, data.message as HelpChatMessage]);
+                setMessages((prev) => [
+                    ...prev,
+                    data.message as HelpChatMessage,
+                ]);
             }
         } catch {
             setError('Network error. Please try again.');
@@ -199,13 +222,20 @@ export function HelpConversation({
                 return null;
             }
 
-            const projectInquiryParts = sourceMessage.parts
-                ?.filter(isProjectInquiryToolPart)
-                .filter(
-                    (part) => !dismissedToolCallIds.includes(part.toolCallId),
-                );
+            const projectInquiryParts =
+                sourceMessage.parts
+                    ?.filter(isProjectInquiryToolPart)
+                    .filter(
+                        (part) =>
+                            !dismissedToolCallIds.includes(part.toolCallId),
+                    ) ?? [];
+            const pricingCalculatorParts =
+                sourceMessage.parts?.filter(isPricingCalculatorToolPart) ?? [];
 
-            if (!projectInquiryParts?.length) {
+            if (
+                projectInquiryParts.length === 0 &&
+                pricingCalculatorParts.length === 0
+            ) {
                 return null;
             }
 
@@ -247,6 +277,12 @@ export function HelpConversation({
                             </CardContent>
                         </Card>
                     ))}
+                    {pricingCalculatorParts.map((part) => (
+                        <PricingCalculatorUI
+                            key={part.toolCallId}
+                            {...part.output}
+                        />
+                    ))}
                 </div>
             );
         },
@@ -260,7 +296,7 @@ export function HelpConversation({
     const isTyping = status === 'submitted';
 
     return (
-        <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
+        <div className="flex h-[calc(100vh-5rem)] flex-col bg-background shadow-top rounded-xl">
             <ScrollArea className="flex-1">
                 <div className="mx-auto flex w-full max-w-4xl flex-col px-6 py-10 gap-5">
                     {visibleMessages.map((message, index) => {
@@ -290,8 +326,8 @@ export function HelpConversation({
                                 <div className="flex max-w-3xl flex-col gap-4">
                                     {renderMessageParagraphs(messageText)}
                                 </div>
-                                {renderSourcesBlock(message)}
                                 {renderAfterMessage(message)}
+                                {renderSourcesBlock(message)}
                                 {showDivider ? (
                                     <Separator className="mt-4" />
                                 ) : null}
@@ -312,17 +348,15 @@ export function HelpConversation({
                 </div>
             </ScrollArea>
 
-            <div className="border-t bg-background/95">
+            <div className="border-t bg-background">
                 <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-6 py-4">
                     <HelpSearchInput
                         onSubmit={handleFollowUp}
                         placeholder="Ask a follow up"
                         variant="follow-up"
                     />
-                    <p className="text-center text-sm text-muted-foreground">
-                        PakSpecialist can make mistakes. Consider checking
-                        important information.
-                    </p>
+
+                    <AgentDisclaimer />
                 </div>
             </div>
         </div>

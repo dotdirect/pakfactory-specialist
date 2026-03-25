@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@import '../styles/ai-glow.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -136,3 +137,4 @@
         box-shadow: 0 -8px 20px -8px rgba(141, 141, 141, 0.12);
     }
 }
+

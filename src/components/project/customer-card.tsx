@@ -1,15 +1,15 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { User } from 'lucide-react'
-import type { CustomerInfo } from '@/types/brief'
+import type { Customer } from '@/types/brief'
 
-// SCALE: New customer fields shown here; add display for any new CustomerInfo / identity fields added in brief.ts.
+// SCALE: New customer fields shown here; add display for any new Customer fields added in brief.ts.
 
 interface CustomerCardProps {
-  customerInfo?: CustomerInfo
+  customer?: Customer
 }
 
-export function CustomerCard({ customerInfo }: CustomerCardProps) {
-  if (!customerInfo) {
+export function CustomerCard({ customer }: CustomerCardProps) {
+  if (!customer) {
     return (
       <Card className="border-dashed">
         <CardContent className="pt-6 text-center text-muted-foreground">
@@ -21,8 +21,8 @@ export function CustomerCard({ customerInfo }: CustomerCardProps) {
   }
 
   const displayName =
-    [customerInfo.firstName, customerInfo.lastName].filter(Boolean).join(' ') ||
-    customerInfo.name
+    [customer.firstName, customer.lastName].filter(Boolean).join(' ') ||
+    customer.name
 
   return (
     <Card>
@@ -35,21 +35,21 @@ export function CustomerCard({ customerInfo }: CustomerCardProps) {
       <CardContent>
         <div className="space-y-1 text-sm">
           {displayName && <p className="font-medium">{displayName}</p>}
-          {customerInfo.email && (
-            <p className="text-muted-foreground">{customerInfo.email}</p>
+          {customer.email && (
+            <p className="text-muted-foreground">{customer.email}</p>
           )}
-          {customerInfo.company && (
-            <p className="text-muted-foreground">{customerInfo.company}</p>
+          {customer.company && (
+            <p className="text-muted-foreground">{customer.company}</p>
           )}
-          {customerInfo.phone && (
-            <p className="text-muted-foreground">{customerInfo.phone}</p>
+          {customer.phone && (
+            <p className="text-muted-foreground">{customer.phone}</p>
           )}
-          {customerInfo.industry && (
-            <p className="text-muted-foreground">{customerInfo.industry}</p>
+          {customer.industry && (
+            <p className="text-muted-foreground">{customer.industry}</p>
           )}
-          {customerInfo.annualBudget != null && (
+          {customer.annualBudget != null && (
             <p className="text-muted-foreground">
-              Budget: {customerInfo.annualBudget}
+              Budget: {customer.annualBudget}
             </p>
           )}
         </div>

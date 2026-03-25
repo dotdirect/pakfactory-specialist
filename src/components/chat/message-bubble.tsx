@@ -30,7 +30,9 @@ export function MessageBubble({message}: MessageBubbleProps) {
             <div
                 className={cn(
                     'max-w-[80%] rounded-3xl p-5',
-                    isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
+                    isUser
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-primary/9',
                 )}
             >
                 {!isUser && (

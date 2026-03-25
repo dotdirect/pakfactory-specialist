@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-// SCALE: To collect more customer or project fields, add them here and in brief-events.ts; then extend sync-project-brief tool input and brief-collection config. See plan "Brief builder customer info fix" → Phased brief collection strategy.
+// SCALE: Nested customer/project/metadata schema. Add fields here and in brief-events.ts; extend sync-project-brief tool input and brief-collection config as needed.
 
 export const BriefStatusSchema = z.enum([
   'draft',
@@ -10,20 +10,23 @@ export const BriefStatusSchema = z.enum([
 ])
 export type BriefStatus = z.infer<typeof BriefStatusSchema>
 
-export const CustomerInfoSchema = z.object({
+/** Customer (nested under brief.customer). Optional fields for in-app collection. */
+export const CustomerSchema = z.object({
   name: z.string().optional(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  email: z.string().email().optional(),
-  company: z.string().optional(),
-  phone: z.string().optional(),
-  industry: z.string().optional(),
+  firstName: z.string().min(1, 'First name is required').optional(),
+  lastName: z.string().min(1, 'Last name is required').optional(),
+  email: z.string().email('Invalid email format').optional(),
+  phone: z.string().min(7, 'Phone number required').optional(),
+  company: z.string().min(1, 'Company name required').optional(),
   annualBudget: z.coerce.number().optional(),
-  shopifyCustomerId: z.string().optional(),
+  industry: z.string().optional(),
 })
-export type CustomerInfo = z.infer<typeof CustomerInfoSchema>
+export type Customer = z.infer<typeof CustomerSchema>
 
-/** Phase 2–5 project-level context (productItem, productLine, specs, etc.). */
+/** @deprecated Use Customer. Kept for event payload compatibility. */
+export type CustomerInfo = Customer
+
+/** Phase 2–5 project-level customizations. */
 export const ProjectCustomizationsSchema = z.object({
   materials: z.string().optional(),
   customization: z.string().optional(),
@@ -32,15 +35,19 @@ export const ProjectCustomizationsSchema = z.object({
 })
 export type ProjectCustomizations = z.infer<typeof ProjectCustomizationsSchema>
 
+/** Project context (nested under brief.project). Optional for in-app collection. */
 export const ProjectContextSchema = z.object({
   productItem: z.string().optional(),
   productLine: z.string().optional(),
   packagingStyle: z.string().optional(),
-  dimensions: z.string().optional(),
   deliveryCountry: z.string().optional(),
-  quantity: z.array(z.coerce.number().int().positive()).optional(),
-  customizations: ProjectCustomizationsSchema.optional(),
   details: z.string().optional(),
+  quantity: z.array(z.coerce.number().int().positive()).optional(),
+  dimensions: z
+    .string()
+    .regex(/^[0-9]+x[0-9]+x[0-9]+$/, 'Format must be LxWxH')
+    .optional(),
+  customizations: ProjectCustomizationsSchema.optional(),
   projectPDF: z.string().url().optional(),
 })
 export type ProjectContext = z.infer<typeof ProjectContextSchema>
@@ -87,17 +94,31 @@ export const TimelineSchema = z.object({
 })
 export type Timeline = z.infer<typeof TimelineSchema>
 
+/** Metadata (source, tokenUsage). Optional for in-app. */
+export const MetadataSchema = z.object({
+  source: z.literal('PakSpecialist_RFQ').optional(),
+  sourceObj: z.record(z.string(), z.unknown()).optional(),
+  tokenUsage: z
+    .object({
+      input: z.number(),
+      output: z.number(),
+      total: z.number(),
+    })
+    .optional(),
+})
+export type Metadata = z.infer<typeof MetadataSchema>
+
 export const TechnicalBriefSchema = z.object({
   id: z.string().uuid(),
   conversationId: z.string().optional(),
   status: BriefStatusSchema,
-  customerInfo: CustomerInfoSchema.optional(),
+  customer: CustomerSchema.optional(),
   intent: IntentSchema.optional(),
   lineItems: z.array(LineItemSchema).default([]),
   timeline: TimelineSchema.optional(),
   notes: z.string().optional(),
-  /** Phase 2–5: productItem, productLine, dimensions, deliveryCountry, customizations, etc. */
   project: ProjectContextSchema.optional(),
+  metadata: MetadataSchema.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   submittedAt: z.string().datetime().optional(),

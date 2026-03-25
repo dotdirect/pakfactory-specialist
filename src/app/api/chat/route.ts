@@ -4,6 +4,7 @@ import { getModel } from '@/lib/agents/model'
 import { csAgentConfig } from '@/lib/agents/cs-agent'
 import { csAgentSystemPrompt } from '@/lib/prompts/cs-agent'
 import type { StartProjectInquiryOutput } from '@/lib/tools/start-project-inquiry'
+import type { ShowPricingCalculatorOutput } from '@/lib/tools/show-pricing-calculator'
 import type { HelpChatMessage } from '@/types/help-chat'
 
 export const runtime = 'edge'
@@ -64,25 +65,59 @@ const HelpRequestSchema = z.object({
 })
 
 const PROJECT_INQUIRY_KEYWORDS = [
-  'quote', 'pricing', 'rfq', 'request for quote',
+  'quote', 'rfq', 'request for quote',
   'start a project', 'project inquiry', 'project',
   'recommend', 'recommendation',
 ]
+
+/** Questions that ask for price/cost of a specific product should show the pricing calculator. */
+const PRICING_CALCULATOR_PHRASES = [
+  'how much for',
+  'how much do',
+  'pricing for',
+  'price for',
+  'cost for',
+  'cost of',
+  'price of',
+]
+
+function shouldForcePricingCalculator(question: string) {
+  const lower = question.toLowerCase().trim()
+  return PRICING_CALCULATOR_PHRASES.some((phrase) => lower.includes(phrase))
+}
 
 function shouldForceProjectInquiry(question: string) {
   const lower = question.toLowerCase()
   return PROJECT_INQUIRY_KEYWORDS.some((kw) => lower.includes(kw))
 }
 
+/** Demo sources shown until real RAG/knowledge-base is wired up. */
+const DEMO_SOURCES: Array<{ id: string; url: string; title: string }> = [
+  {
+    id: 'demo-1',
+    url: 'https://feather-canidae-1dc.notion.site/What-printing-methods-are-available-320eb5db19ec806c863cd3a7124a1dea',
+    title: 'What printing methods are available? — PakSpecialist',
+  },
+]
+
+type ProjectInquiryResult = {
+  toolCallId: string
+  toolName: 'start_project_inquiry'
+  input: { reason: string }
+  output: StartProjectInquiryOutput
+}
+type PricingCalculatorResult = {
+  toolCallId: string
+  toolName: 'show_pricing_calculator'
+  input: { productIdOrName: string }
+  output: ShowPricingCalculatorOutput
+}
+
 function buildAssistantMessage(
   id: string,
   text: string,
-  staticToolResults: Array<{
-    toolCallId: string
-    toolName: string
-    input: { reason: string }
-    output: StartProjectInquiryOutput
-  }>,
+  staticToolResults: Array<ProjectInquiryResult | PricingCalculatorResult>,
+  sources: Array<{ id: string; url: string; title?: string }> = [],
 ): HelpChatMessage {
   const parts: HelpChatMessage['parts'] = [
     {
@@ -91,10 +126,27 @@ function buildAssistantMessage(
       state: 'done',
     },
   ]
+  for (const source of sources) {
+    parts.push({
+      type: 'source-url',
+      sourceId: source.id,
+      url: source.url,
+      title: source.title,
+    })
+  }
   for (const tr of staticToolResults) {
     if (tr.toolName === 'start_project_inquiry') {
       parts.push({
         type: 'tool-start_project_inquiry',
+        toolCallId: tr.toolCallId,
+        state: 'output-available',
+        input: tr.input,
+        output: tr.output,
+      })
+    }
+    if (tr.toolName === 'show_pricing_calculator') {
+      parts.push({
+        type: 'tool-show_pricing_calculator',
         toolCallId: tr.toolCallId,
         state: 'output-available',
         input: tr.input,
@@ -139,30 +191,52 @@ export async function POST(req: Request) {
     })
   }
 
+  const toolChoice =
+    shouldForcePricingCalculator(question)
+      ? { type: 'tool' as const, toolName: 'show_pricing_calculator' as const }
+      : shouldForceProjectInquiry(question)
+        ? { type: 'tool' as const, toolName: 'start_project_inquiry' as const }
+        : csAgentConfig.toolChoice
+
   const result = await generateText({
     model: getModel(),
     system: csAgentSystemPrompt,
     messages: [{ role: 'user', content: question }],
     ...csAgentConfig,
-    toolChoice: shouldForceProjectInquiry(question)
-      ? { type: 'tool', toolName: 'start_project_inquiry' }
-      : csAgentConfig.toolChoice,
+    toolChoice,
   })
+
+  const toolResults: Array<ProjectInquiryResult | PricingCalculatorResult> = []
+  for (const r of result.staticToolResults) {
+    if (r.toolName === 'start_project_inquiry') {
+      toolResults.push({
+        toolCallId: r.toolCallId,
+        toolName: r.toolName,
+        input: r.input as { reason: string },
+        output: r.output as StartProjectInquiryOutput,
+      })
+    }
+    if (r.toolName === 'show_pricing_calculator') {
+      toolResults.push({
+        toolCallId: r.toolCallId,
+        toolName: r.toolName,
+        input: r.input as { productIdOrName: string },
+        output: r.output as ShowPricingCalculatorOutput,
+      })
+    }
+  }
+
+  const mappedSources = result.sources
+    .filter((s): s is typeof s & { url: string } => 'url' in s && typeof (s as { url?: string }).url === 'string')
+    .map((s) => ({ id: s.id, url: (s as { url: string }).url, title: (s as { title?: string }).title ?? undefined }))
+  const sources: Array<{ id: string; url: string; title?: string }> =
+    mappedSources.length > 0 ? mappedSources : DEMO_SOURCES
 
   const message = buildAssistantMessage(
     crypto.randomUUID(),
     result.text,
-    result.staticToolResults
-      .filter(
-        (r): r is typeof r & { toolName: 'start_project_inquiry'; input: { reason: string }; output: StartProjectInquiryOutput } =>
-          r.toolName === 'start_project_inquiry',
-      )
-      .map((r) => ({
-        toolCallId: r.toolCallId,
-        toolName: r.toolName,
-        input: r.input,
-        output: r.output,
-      })),
+    toolResults,
+    sources,
   )
 
   helpResponseCache.set(cacheKey, {

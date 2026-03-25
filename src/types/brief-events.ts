@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import { CustomerInfoSchema, IntentSchema, ProductSpecsSchema, ProjectContextSchema, TimelineSchema } from './brief'
+import { CustomerSchema, IntentSchema, ProductSpecsSchema, ProjectContextSchema, TimelineSchema } from './brief'
 
-// SCALE: New fields need matching event payloads (e.g. extend brief.identity.confirmed data, or add new action types). Keep in sync with brief.ts and sync-project-brief tool output.
+// SCALE: New fields need matching event payloads. Keep in sync with brief.ts and sync-project-brief tool output.
 
 export const BriefEventSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('brief.identity.confirmed'),
-    data: CustomerInfoSchema,
+    data: CustomerSchema.partial(),
   }),
   z.object({
     action: z.literal('brief.intent.confirmed'),

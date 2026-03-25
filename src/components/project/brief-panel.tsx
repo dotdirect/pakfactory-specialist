@@ -1,17 +1,20 @@
 'use client';
 
 import {Card, CardContent} from '@/components/ui/card';
-import {Badge} from '@/components/ui/badge';
 import {Separator} from '@/components/ui/separator';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {getCompletionPercentage} from '@/lib/brief-collection';
 import {useBriefStore} from '@/stores/brief-store';
 import {CustomerCard} from './customer-card';
-import {IntentCard} from './intent-card';
-import {LineItemList} from './line-item-list';
-import {TimelineCard} from './timeline-card';
-import {ProgressBar} from './progress-bar';
-import {SubmitButton} from './submit-button';
+import {IntentCard} from '@/components/project/intent-card';
+import {LineItemList} from '@/components/project/line-item-list';
+import {TimelineCard} from '@/components/project/timeline-card';
+import {ProgressBar} from '@/components/project/progress-bar';
+import {BriefPanelHeader} from '@/components/project/brief-panel-header';
+import {BriefPanelSectionWrapper} from '@/components/project/brief-panel-section-wrapper';
+import {BriefPanelProjectDetail} from '@/components/project/brief-panel-project-detail';
+// import {SubmitButton} from './submit-button';
+import Image from 'next/image';
 
 interface BriefPanelProps {
     /** When true, do not render the progress bar (e.g. when it is shown above the panel). */
@@ -38,24 +41,29 @@ export function BriefPanel({hideProgressBar = false}: BriefPanelProps) {
     }
 
     return (
-        <div className="h-full min-h-0 flex flex-col">
-            <div className="p-4">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">Project Brief</h2>
-                    <Badge variant="secondary">{brief.status}</Badge>
-                </div>
+        <div className="h-full min-h-0 flex flex-col w-full">
+            <div className=" lg:px-10 xl:px-20 lg:py-8 xl:py-12 ">
+                <BriefPanelHeader brief={brief} />
+
                 {!hideProgressBar && (
-                    <ProgressBar value={completion} className="mt-3" />
+                    <ProgressBar value={completion} className="mt-3 w-full" />
                 )}
             </div>
             <Separator />
 
-            <ScrollArea className="flex-1 min-h-0 p-4">
+            <ScrollArea className="flex-1 min-h-0 lg:px-10 xl:px-20 lg:py-8 xl:py-10 ">
                 <div className="space-y-4">
-                    <CustomerCard customerInfo={brief.customerInfo} />
-                    <IntentCard intent={brief.intent} />
+                    {/* <BriefPanelSectionWrapper title="Customer">
+                        <CustomerCard customer={brief.customer} />
+                    </BriefPanelSectionWrapper> */}
+
+                    <BriefPanelSectionWrapper title="Project Detail">
+                        <BriefPanelProjectDetail brief={brief} />
+                    </BriefPanelSectionWrapper>
+
+                    {/* <IntentCard intent={brief.intent} />
                     <LineItemList lineItems={brief.lineItems} />
-                    <TimelineCard timeline={brief.timeline} />
+                    <TimelineCard timeline={brief.timeline} /> */}
                 </div>
             </ScrollArea>
 

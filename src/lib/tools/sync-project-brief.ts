@@ -178,10 +178,10 @@ export const syncProjectBriefTool = tool({
 
 export const syncProjectBriefGuidance = `
 Tool policy:
-- Call sync_project_brief whenever the customer provides concrete project details that belong in a quote brief.
-- Prefer one concise tool call that captures all newly learned details from the latest turn.
+- Call sync_project_brief only when the current phase is complete: the user has given you all required info for that phase (MISSING IN THIS PHASE is satisfied). Call it once with all the phase's fields, then ask questions for the next phase. Do not call on every message. At most one tool call per phase completion. This keeps responses fast and avoids timeouts.
+- When the user's latest message provides the last item in MISSING IN THIS PHASE, you MUST call sync_project_brief in this same turn with all fields you have collected for that phase. The brief only updates when you invoke the tool—never say "I've updated", "I've saved", or "brief is updated" without having called sync_project_brief in this turn.
 - Use intentType when the customer is clearly requesting a quote, recommendations, or general inquiry support.
-- Identity (Phase 1): Include customerFirstName, customerLastName, customerName, customerEmail, customerCompany, customerPhone as soon as any are mentioned. Use customerIndustry and customerAnnualBudget when shared.
+- Identity (Phase 1): Call sync_project_brief in the same turn whenever the user gives name, email, or company so the brief panel updates. Include customerFirstName, customerLastName, customerName, customerEmail, customerCompany, customerPhone as soon as any are mentioned. Use customerIndustry and customerAnnualBudget when shared.
 - Context (Phase 2): Use productItem for "what product are you packaging?" and customerIndustry for industry.
 - Project context: Use productLine, packagingStyle, dimensions, deliveryCountry, quantityList, materials, finishes, addOns, details when the customer provides them.
 - Include productName, productCategory, quantity for line items (brief.product.added), and urgency for timeline.

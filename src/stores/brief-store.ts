@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { v4 as uuidv4 } from 'uuid'
-import type { TechnicalBrief, LineItem, CustomerInfo, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus } from '@/types/brief'
+import type { TechnicalBrief, LineItem, Customer, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus } from '@/types/brief'
 import type { BriefEvent } from '@/types/brief-events'
 
 interface BriefState {
@@ -10,7 +10,7 @@ interface BriefState {
   lastUpdatedField: string | null
 
   initializeBrief: (conversationId?: string) => void
-  updateCustomerInfo: (info: CustomerInfo) => void
+  updateCustomerInfo: (info: Partial<Customer>) => void
   updateIntent: (intent: Intent) => void
   addLineItem: (item: Omit<LineItem, 'id' | 'addedAt'>) => void
   removeLineItem: (lineItemId: string) => void
@@ -47,13 +47,16 @@ export const useBriefStore = create<BriefState>()(
         updateCustomerInfo: (info) => {
           set((state) => {
             if (state.brief) {
-              state.brief.customerInfo = {
-                ...state.brief.customerInfo,
-                ...info,
+              const patch = Object.fromEntries(
+                Object.entries(info).filter(([, v]) => v !== undefined),
+              ) as Partial<Customer>
+              state.brief.customer = {
+                ...state.brief.customer,
+                ...patch,
               }
               state.brief.updatedAt = new Date().toISOString()
               state.brief.status = 'in_progress'
-              state.lastUpdatedField = 'customerInfo'
+              state.lastUpdatedField = 'customer'
             }
           })
         },
@@ -204,7 +207,7 @@ export const useBriefStore = create<BriefState>()(
           let completed = 0
           const total = 5
 
-          if (brief.customerInfo) completed++
+          if (brief.customer) completed++
           if (brief.intent) completed++
           if (brief.lineItems.length > 0) completed++
           if (brief.lineItems.some((item) => item.specs)) completed++

@@ -61,8 +61,8 @@ Topics you can help with:
     const greeting: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: context?.customerInfo?.name
-        ? `Hi ${context.customerInfo.name}! I'm Anthony, your packaging specialist. How can I help you today?`
+      content: context?.customer?.name
+        ? `Hi ${context.customer.name}! I'm Anthony, your packaging specialist. How can I help you today?`
         : `Hi there! I'm Anthony, your packaging specialist. How can I help you today?`,
       createdAt: new Date(),
     }

@@ -9,6 +9,6 @@ export const specialistAgentConfig = {
   tools: specialistAgentTools,
   activeTools: ['sync_project_brief'] as Array<'sync_project_brief'>,
   toolChoice: 'auto' as const,
-  stopWhen: stepCountIs(3),
-  maxTokens: 300,
+  stopWhen: stepCountIs(2),
+  maxTokens: 400,
 }

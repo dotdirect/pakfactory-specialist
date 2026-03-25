@@ -39,8 +39,8 @@ export class BotpressEngine implements ConversationEngine {
       messages: [{
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: context?.customerInfo?.name
-          ? `Hi ${context.customerInfo.name}! I'm Anthony, your packaging specialist. Let's build your quote together.`
+        content: context?.customer?.name
+          ? `Hi ${context.customer.name}! I'm Anthony, your packaging specialist. Let's build your quote together.`
           : `Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.`,
         createdAt: new Date(),
       }],

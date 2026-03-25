@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { CustomerInfoSchema, IntentSchema } from '@/types/brief'
+import { CustomerSchema, IntentSchema } from '@/types/brief'
 
 const CreateBriefSchema = z.object({
-  customerInfo: CustomerInfoSchema.optional(),
+  customer: CustomerSchema.optional(),
   intent: IntentSchema.optional(),
   notes: z.string().optional(),
 })

@@ -7,6 +7,7 @@ import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {useAuthStore} from '@/hooks/use-auth-store';
 import {usePlatformStore} from '@/hooks/use-platform-store';
+import {AIGlow} from '@/components/common/ai-glow';
 
 function getDisplayName(name: string | null, email: string | null) {
     if (name) return name;
@@ -84,13 +85,15 @@ export function Header() {
                         <div className="h-10 w-40" />
                     ) : (
                         <>
-                            <Link href="/help">
+                            <Link href="/help-center">
                                 <Button variant="ghost" size="lg">
                                     Login
                                 </Button>
                             </Link>
                             <Link href="/project">
-                                <Button size="lg">Create Account</Button>
+                                <AIGlow trigger="hover" theme="cosmic">
+                                    <Button size="lg">Create Account</Button>
+                                </AIGlow>
                             </Link>
                         </>
                     )}

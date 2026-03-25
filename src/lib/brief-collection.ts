@@ -19,15 +19,15 @@ export type BriefPhaseLabel = (typeof BRIEF_PHASES)[number]
 
 /** Phase 1: Identity (gate) — 0–30% */
 function isPhase1Complete(brief: TechnicalBrief): boolean {
-  const c = brief.customerInfo
+  const c = brief.customer
   if (!c) return false
   const hasName = Boolean(c.firstName && c.lastName) || Boolean(c.name)
-  return hasName && Boolean(c.email) && Boolean(c.company) && Boolean(c.phone)
+  return hasName && Boolean(c.email)
 }
 
 /** Phase 2: Context — 30–50% */
 function isPhase2Complete(brief: TechnicalBrief): boolean {
-  const c = brief.customerInfo
+  const c = brief.customer
   const p = brief.project
   return Boolean(c?.industry) && Boolean(p?.productItem)
 }
@@ -88,21 +88,19 @@ const PHASE_5_FIELDS = [
 ] as const
 
 function getMissingForPhase1(brief: TechnicalBrief): string[] {
-  const c = brief.customerInfo
+  const c = brief.customer
   const missing: string[] = []
   if (!c?.firstName && !c?.name) missing.push('customer.firstName')
   if (!c?.lastName && !c?.name) missing.push('customer.lastName')
   if (!c?.email) missing.push('customer.email')
-  if (!c?.phone) missing.push('customer.phone')
-  if (!c?.company) missing.push('customer.company')
   return missing.filter((v, i, a) => a.indexOf(v) === i)
 }
 
 function getMissingForPhase2(brief: TechnicalBrief): string[] {
   const missing: string[] = []
-  if (!brief.customerInfo?.industry) missing.push('customer.industry')
+  if (!brief.customer?.industry) missing.push('customer.industry')
   if (!brief.project?.productItem) missing.push('project.productItem')
-  if (brief.customerInfo?.annualBudget == null) missing.push('customer.annualBudget')
+  if (brief.customer?.annualBudget == null) missing.push('customer.annualBudget')
   return missing
 }
 
@@ -154,14 +152,14 @@ export function getMissingFieldsInPhase(
 export function getCompletionPercentage(brief: TechnicalBrief | null): number {
   if (!brief) return 0
   if (!isPhase1Complete(brief)) {
-    const c = brief.customerInfo
+    const c = brief.customer
     const nameDone = (c?.firstName && c?.lastName) ? 2 : (c?.name ? 1 : 0)
     const rest = [c?.email, c?.phone, c?.company].filter(Boolean).length
     const done = nameDone + rest
     return Math.round((done / 5) * 30)
   }
   if (!isPhase2Complete(brief)) {
-    const done = [brief.customerInfo?.industry, brief.project?.productItem].filter(Boolean).length
+    const done = [brief.customer?.industry, brief.project?.productItem].filter(Boolean).length
     return 30 + Math.round((done / 2) * 20)
   }
   if (!isPhase3Complete(brief)) {

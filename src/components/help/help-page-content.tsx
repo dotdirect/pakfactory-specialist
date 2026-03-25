@@ -20,7 +20,7 @@ export function HelpPageContent() {
     }, []);
 
     return (
-        <div className="relative h-[calc(100vh-3.5rem)]  bg-background-alt">
+        <div className="relative h-[calc(100vh-5rem)] bg-background-alt">
             {/* Landing */}
             <div
                 className={`absolute inset-0 transition-all duration-300 ${
@@ -33,8 +33,11 @@ export function HelpPageContent() {
                     <div className="container mx-auto max-w-4xl px-4 py-24">
                         <div className="text-center mb-10">
                             <h1 className="text-4xl font-bold tracking-tight">
-                                How can we help?
+                                Help Center
                             </h1>
+                            <p className="mt-2 text-muted-foreground">
+                                How can we help?
+                            </p>
                         </div>
 
                         <div className=" mx-auto mb-16">

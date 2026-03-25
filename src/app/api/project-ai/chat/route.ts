@@ -6,47 +6,10 @@ import { buildSpecialistPrompt } from '@/lib/prompts/specialist-agent'
 import type { ProjectAiChatMessage } from '@/types/project-ai-chat'
 
 export const runtime = 'edge'
+export const maxDuration = 30
 
 const PROJECT_AI_RATE_LIMIT_WINDOW_MS = 60_000
 const PROJECT_AI_RATE_LIMIT_MAX_REQUESTS = 30
-const PROJECT_AI_CACHE_TTL_MS = 60_000 // 1 minute
-
-const projectAiStreamCache = new Map<
-  string,
-  { chunks: Uint8Array[]; expires: number; headers: Headers }
->()
-
-function getLastUserText(messages: ProjectAiChatMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.role !== 'user') continue
-    const text = m.parts
-      ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-      .map((p) => p.text)
-      .join(' ')
-    return (text ?? '').trim()
-  }
-  return ''
-}
-
-async function projectAiCacheKey(
-  lastUserText: string,
-  missingFields: string[] | undefined,
-  currentPhase: string | undefined,
-): Promise<string> {
-  const normalized = JSON.stringify([
-    lastUserText.trim().toLowerCase().replace(/\s+/g, ' '),
-    [...(missingFields ?? [])].sort(),
-    currentPhase ?? '',
-  ])
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(normalized),
-  )
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
 
 type RateLimitEntry = { count: number; windowStart: number }
 const projectAiRateLimitMap = new Map<string, RateLimitEntry>()
@@ -74,11 +37,59 @@ function checkProjectAiRateLimit(clientId: string): boolean {
   return true
 }
 
+/** Returns true if this message is an assistant turn that contains tool/function calls. Gemini requires such turns to follow a user or function-response turn, so we must not start the window with one. */
+function isAssistantWithToolCalls(msg: { role: string; toolCalls?: unknown[]; tool_calls?: unknown[] }): boolean {
+  if (msg.role !== 'assistant') return false
+  const calls = msg.toolCalls ?? msg.tool_calls
+  return Array.isArray(calls) && calls.length > 0
+}
+
+/** Take the last maxWindow messages, then trim from the start so we never begin with an assistant message that has tool calls (satisfies Gemini message order). */
+function trimToValidMessageWindow<T>(messages: T[], maxWindow: number): T[] {
+  const window = messages.slice(-maxWindow)
+  let start = 0
+  while (start < window.length && isAssistantWithToolCalls(window[start] as { role: string; toolCalls?: unknown[]; tool_calls?: unknown[] })) {
+    start += 1
+  }
+  // If every message was assistant-with-tool-calls, keep the whole window rather than sending empty
+  return start < window.length ? window.slice(start) : window
+}
+
 const ChatRequestSchema = z.object({
   messages: z.unknown(),
   missingFields: z.array(z.string()).optional(),
   currentPhase: z.string().optional(),
 })
+
+/** Simple email pattern: user likely provided email as the last message. */
+const EMAIL_LIKE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function getLastUserMessageText(messages: unknown): string {
+  if (!Array.isArray(messages) || messages.length === 0) return ''
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i] as { role?: string; parts?: Array<{ type?: string; text?: string }> }
+    if (msg?.role !== 'user') continue
+    const parts = msg.parts ?? []
+    const text = parts
+      .filter((p): p is { type: string; text: string } => p?.type === 'text' && typeof p.text === 'string')
+      .map((p) => p.text)
+      .join('')
+      .trim()
+    return text
+  }
+  return ''
+}
+
+/** True when the user's last message likely provided the single remaining missing field (e.g. email). */
+function shouldRequireSyncThisTurn(
+  missingFields: string[] | undefined,
+  lastUserText: string,
+): boolean {
+  if (!missingFields || missingFields.length !== 1) return false
+  const only = missingFields[0]
+  if (only === 'customer.email') return EMAIL_LIKE.test(lastUserText)
+  return false
+}
 
 export async function POST(req: Request) {
   const clientId = getClientId(req)
@@ -115,60 +126,26 @@ export async function POST(req: Request) {
     tools: specialistAgentTools,
   })
 
-  const lastUserText = getLastUserText(validatedMessages.data)
-  const cacheKey = await projectAiCacheKey(
-    lastUserText,
+  // Gemini (and some providers) require: a function-call turn must come immediately after a user turn or a function-response turn. So we must not start the message window with an assistant message that contains tool calls.
+  const messagesToSend = trimToValidMessageWindow(modelMessages, 12)
+
+  const lastUserText = getLastUserMessageText(result.data.messages)
+  const mustSyncThisTurn = shouldRequireSyncThisTurn(
     result.data.missingFields,
-    result.data.currentPhase,
+    lastUserText,
   )
-  const now = Date.now()
-  const cached = projectAiStreamCache.get(cacheKey)
-  if (cached && cached.expires > now) {
-    const stream = new ReadableStream({
-      start(controller) {
-        for (const chunk of cached.chunks) {
-          controller.enqueue(chunk)
-        }
-        controller.close()
-      },
-    })
-    return new Response(stream, { headers: cached.headers })
-  }
 
   // SCALE: This route receives missingFields and currentPhase from the client. System prompt is built here; scaling = more fields in client payload and prompt template.
   const resultText = streamText({
     model: getModel(),
-    system: buildSpecialistPrompt(result.data.missingFields, result.data.currentPhase),
-    messages: modelMessages.slice(-6),
+    system: buildSpecialistPrompt(
+      result.data.missingFields,
+      result.data.currentPhase,
+      mustSyncThisTurn,
+    ),
+    messages: messagesToSend,
     ...specialistAgentConfig,
   })
 
-  const response = resultText.toUIMessageStreamResponse<ProjectAiChatMessage>()
-  const [stream1, stream2] = response.body!.tee()
-  const headersToStore = new Headers(response.headers)
-
-  const reader = stream2.getReader()
-  const chunks: Uint8Array[] = []
-  ;(async () => {
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (value) chunks.push(value)
-      }
-      projectAiStreamCache.set(cacheKey, {
-        chunks,
-        expires: now + PROJECT_AI_CACHE_TTL_MS,
-        headers: headersToStore,
-      })
-    } finally {
-      reader.releaseLock()
-    }
-  })()
-
-  return new Response(stream1, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  })
+  return resultText.toUIMessageStreamResponse<ProjectAiChatMessage>()
 }

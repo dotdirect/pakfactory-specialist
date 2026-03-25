@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import {
-  CustomerInfoSchema,
+  CustomerSchema,
   IntentSchema,
   TimelineSchema,
   BriefStatusSchema,
@@ -12,7 +12,7 @@ interface RouteParams {
 }
 
 const UpdateBriefSchema = z.object({
-  customerInfo: CustomerInfoSchema.optional(),
+  customer: CustomerSchema.optional(),
   intent: IntentSchema.optional(),
   timeline: TimelineSchema.optional(),
   status: BriefStatusSchema.optional(),

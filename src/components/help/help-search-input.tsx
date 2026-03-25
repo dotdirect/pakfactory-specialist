@@ -1,10 +1,12 @@
 'use client';
 
 import {useState, useRef, useEffect, type KeyboardEvent} from 'react';
+import {cn} from '@/lib/utils/cn';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Search, X, ArrowUp} from 'lucide-react';
 import {DEFAULT_AGENT_NAME, usePlatformStore} from '@/stores/platform-store';
+import {AIGlow} from '@/components/common/ai-glow';
 
 const suggestedQuestions = [
     'How do I get a quote?',
@@ -85,37 +87,47 @@ export function HelpSearchInput({
 
     return (
         <div ref={containerRef} className="relative w-full">
-            <div className="relative flex items-center">
+            <div className="relative flex w-full items-center">
                 <Search className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                    ref={inputRef}
-                    value={value}
-                    onChange={(e) => {
-                        const nextValue = e.target.value;
-                        const nextFiltered = nextValue.trim()
-                            ? suggestedQuestions.filter((q) =>
-                                  q
-                                      .toLowerCase()
-                                      .includes(nextValue.toLowerCase()),
-                              )
-                            : [];
+                <AIGlow
+                    trigger="hover"
+                    pill={variant === 'landing'}
+                    className={cn(
+                        variant === 'follow-up' && 'ai-glow--rounded-lg',
+                    )}
+                >
+                    <Input
+                        ref={inputRef}
+                        value={value}
+                        onChange={(e) => {
+                            const nextValue = e.target.value;
+                            const nextFiltered = nextValue.trim()
+                                ? suggestedQuestions.filter((q) =>
+                                      q
+                                          .toLowerCase()
+                                          .includes(nextValue.toLowerCase()),
+                                  )
+                                : [];
 
-                        setValue(nextValue);
-                        setSelectedIndex(-1);
-                        setShowSuggestions(nextFiltered.length > 0);
-                    }}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => {
-                        if (filtered.length > 0) setShowSuggestions(true);
-                    }}
-                    placeholder={resolvedPlaceholder}
-                    className={
-                        variant === 'landing'
-                            ? 'h-12 pl-10 pr-20 text-base rounded-full border-border '
-                            : 'h-14 rounded-2xl border-border bg-background pl-11 pr-18 text-base shadow-xs'
-                    }
-                />
-                <div className="absolute right-2 flex items-center gap-1">
+                            setValue(nextValue);
+                            setSelectedIndex(-1);
+                            setShowSuggestions(nextFiltered.length > 0);
+                        }}
+                        onKeyDown={handleKeyDown}
+                        onFocus={() => {
+                            if (filtered.length > 0) setShowSuggestions(true);
+                        }}
+                        placeholder={resolvedPlaceholder}
+                        className={cn(
+                            'w-full cursor-pointer',
+                            variant === 'landing'
+                                ? 'h-12 pl-10 pr-20 text-base rounded-full border-border'
+                                : 'h-14 rounded-2xl border-border bg-background pl-11 pr-18 text-base shadow-xs',
+                        )}
+                    />
+                </AIGlow>
+
+                <div className="absolute right-2 flex items-center gap-1 ">
                     {value && (
                         <Button
                             variant="ghost"
@@ -135,9 +147,7 @@ export function HelpSearchInput({
                         size={variant === 'landing' ? 'icon' : 'icon-sm'}
                         onClick={() => submit(value)}
                         disabled={!value.trim()}
-                        className={
-                            variant === 'landing' ? 'rounded-full' : 'rounded-xl'
-                        }
+                        className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full"
                     >
                         <ArrowUp className="h-4 w-4" />
                     </Button>
@@ -145,7 +155,9 @@ export function HelpSearchInput({
             </div>
 
             {showSuggestions && filtered.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full rounded-lg border bg-background shadow-lg overflow-hidden">
+                <div
+                    className={`absolute z-50 w-full rounded-lg border bg-background shadow-lg overflow-hidden ${variant === 'follow-up' ? 'bottom-full mb-1' : 'mt-1'}`}
+                >
                     {filtered.map((question, index) => (
                         <Button
                             key={question}

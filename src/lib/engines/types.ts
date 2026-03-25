@@ -12,7 +12,7 @@ export interface EngineConfig {
 export interface InitialContext {
   briefId?: string
   userId?: string
-  customerInfo?: {
+  customer?: {
     name?: string
     email?: string
   }

@@ -36,11 +36,11 @@ export const startProjectInquiryTool = tool({
       options: [
         {
           label: 'Continue with Botpress',
-          route: '/project?from=help',
+          route: '/project?from=help-center',
         },
         {
           label: 'Try Project AI',
-          route: '/project-ai?from=help',
+          route: '/project-ai?from=help-center',
           variant: 'outline',
         },
       ],

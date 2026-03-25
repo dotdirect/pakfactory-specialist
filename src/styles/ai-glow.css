@@ -1,0 +1,263 @@
+/**
+ * AI Glow Effect - Sweeping Beam Style
+ * 
+ * Based on liyrofx's CSS Glow Border Animation technique.
+ * Creates a dramatic light beam that sweeps around the element.
+ * 
+ * STRUCTURE REQUIRED:
+ * <div class="ai-glow ai-glow--hover">
+ *   <div class="ai-glow__blur"></div>
+ *   <div class="ai-glow__border"></div>
+ *   <div class="ai-glow__content">
+ *     <!-- Your content here -->
+ *   </div>
+ * </div>
+ * 
+ * TRIGGERS:
+ * - .ai-glow--hover: Activates on mouse hover
+ * - .ai-glow--state + .ai-glow--active: Controlled via JavaScript
+ * 
+ * THEMES:
+ * - Default: Cyan to Purple (cosmic)
+ * - .ai-glow--pink-blue: Pink to Blue
+ * - .ai-glow--google: Google brand colors
+ * - .ai-glow--cyan: Cyan monochrome
+ * 
+ * IMPORTANT: The parent element needs a solid background color
+ * for the effect to work properly. The glow layers sit behind
+ * your content, so transparent backgrounds will show the gradient.
+ */
+
+/* ========================================
+   BASE WRAPPER
+   ======================================== */
+.ai-glow {
+    /* Customizable via CSS variables */
+    --glow-speed: 5s;
+    --glow-radius: 12px;
+    --glow-blur: 30px;
+    --glow-border-width: 3px;
+
+    /* Default theme: Cosmic (cyan → purple) */
+    --glow-color-1: #06b6d4;
+    --glow-color-2: #8b5cf6;
+
+    position: relative;
+    display: inline-flex;
+    padding: var(--glow-border-width);
+    border-radius: var(--glow-radius);
+    overflow: hidden;
+}
+
+/* ========================================
+     GLOW LAYERS
+     ======================================== */
+.ai-glow__border,
+.ai-glow__blur {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--glow-radius);
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.ai-glow__blur {
+    filter: blur(var(--glow-blur));
+}
+
+/* Rotating gradient beam — snake-like trace (like CodePen liyrofx)
+   Large size + narrow segment = thin beam that traces the border */
+.ai-glow__border::before,
+.ai-glow__blur::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 99999px;
+    height: 99999px;
+    transform: translate(-50%, -50%) rotate(0deg);
+    background: conic-gradient(
+        from 0deg,
+        transparent 0%,
+        var(--glow-color-1) 8%,
+        var(--glow-color-2) 16%,
+        transparent 20%
+    );
+    animation: ai-glow-sweep var(--glow-speed) linear infinite;
+}
+
+/* Inner cutout (creates the border effect) */
+.ai-glow__border::after {
+    content: '';
+    position: absolute;
+    inset: var(--glow-border-width);
+    background: var(--background);
+    border-radius: calc(var(--glow-radius) - var(--glow-border-width));
+}
+
+/* Content layer */
+.ai-glow__content {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 0;
+}
+
+/* ========================================
+     ANIMATION
+     ======================================== */
+@keyframes ai-glow-sweep {
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* ========================================
+     TRIGGER: HOVER
+     ======================================== */
+.ai-glow--hover:hover .ai-glow__border,
+.ai-glow--hover:hover .ai-glow__blur {
+    opacity: 1;
+}
+
+/* ========================================
+     TRIGGER: STATE (JS controlled)
+     Add .ai-glow--active class via JavaScript
+     ======================================== */
+.ai-glow--state.ai-glow--active .ai-glow__border,
+.ai-glow--state.ai-glow--active .ai-glow__blur {
+    opacity: 1;
+}
+
+/* ========================================
+     THEME: PINK → BLUE
+     ======================================== */
+.ai-glow--pink-blue {
+    --glow-color-1: #ec4899;
+    --glow-color-2: #3b82f6;
+}
+
+/* ========================================
+     THEME: GOOGLE COLORS
+     ======================================== */
+.ai-glow--google {
+    --glow-color-1: #4285f4;
+    --glow-color-2: #ea4335;
+}
+
+/* Full Google rainbow variant */
+.ai-glow--google-full .ai-glow__border::before,
+.ai-glow--google-full .ai-glow__blur::before {
+    background: conic-gradient(
+        from 0deg,
+        transparent 0%,
+        #4285f4 8%,
+        #ea4335 16%,
+        #fbbc04 24%,
+        #34a853 32%,
+        transparent 40%
+    );
+}
+
+/* ========================================
+     THEME: CYAN MONOCHROME
+     ======================================== */
+.ai-glow--cyan {
+    --glow-color-1: #06b6d4;
+    --glow-color-2: #22d3ee;
+}
+
+/* ========================================
+     MODIFIER: SPEED
+     ======================================== */
+.ai-glow--slow {
+    --glow-speed: 5s;
+}
+
+.ai-glow--fast {
+    --glow-speed: 1.5s;
+}
+
+/* ========================================
+     MODIFIER: INTENSITY
+     ======================================== */
+.ai-glow--subtle {
+    --glow-blur: 10px;
+    --glow-border-width: 2px;
+}
+
+.ai-glow--intense {
+    --glow-blur: 24px;
+    --glow-border-width: 4px;
+}
+
+/* ========================================
+     MODIFIER: RADIUS
+     ======================================== */
+.ai-glow--pill {
+    --glow-radius: 9999px;
+}
+
+.ai-glow--rounded-lg {
+    --glow-radius: 16px;
+}
+
+.ai-glow--square {
+    --glow-radius: 0;
+}
+
+/* ========================================
+     DARK BACKGROUND HELPER
+     Apply to parent container
+     ======================================== */
+.ai-glow-container {
+    background: #0a0a0f;
+    padding: 2rem;
+    border-radius: 12px;
+}
+
+/* ========================================
+     EXAMPLE: BUTTON STYLING
+     ======================================== */
+.ai-glow-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 28px;
+    background: #0a0a0f;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: inherit;
+    cursor: pointer;
+}
+
+/* ========================================
+     EXAMPLE: INPUT STYLING
+     ======================================== */
+.ai-glow-input {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: #0a0a0f;
+    border-radius: inherit;
+    min-width: 280px;
+}
+
+.ai-glow-input input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+}
+
+.ai-glow-input input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}

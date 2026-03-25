@@ -3,14 +3,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useChat} from '@ai-sdk/react';
 import {DefaultChatTransport, isTextUIPart} from 'ai';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import {ChatInput} from '@/components/chat/chat-input';
+import {toast} from 'sonner';
+import {ProjectAiChatInput} from '@/components/project/project-ai-chat-input';
 import {MessageList} from '@/components/chat/message-list';
 import {
     getCurrentPhase,
@@ -21,16 +15,59 @@ import type {BriefEvent} from '@/types/brief-events';
 import type {Message} from '@/types/conversation';
 import type {ProjectAiChatMessage} from '@/types/project-ai-chat';
 
-type SyncProjectBriefToolPart = Extract<
-    ProjectAiChatMessage['parts'][number],
-    {type: 'tool-sync_project_brief'; state: 'output-available'}
->;
+const SYNC_BRIEF_TOOL_TYPE = 'tool-sync_project_brief'
+
+/** Matches a string that looks like an email (user likely provided email as the only missing field). */
+const EMAIL_LIKE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** Recognizes sync_project_brief tool parts: typed part or toolCallId + output.events; requires state === 'output-available' when state is present. */
+function partHasBriefEvents(
+    part: ProjectAiChatMessage['parts'][number],
+): boolean {
+    const p = part as Record<string, unknown>
+    if (typeof p.toolCallId !== 'string') return false
+    const state = p.state as string | undefined
+    if (state != null && state !== 'output-available') return false
+    const payload = (p.output ?? p.result) as { events?: unknown[] } | undefined
+    const events = payload?.events
+    return Array.isArray(events) && events.length > 0
+}
+
+/** Prefer typed tool part so we only process sync_project_brief, not other tools. */
+function isSyncBriefPart(part: ProjectAiChatMessage['parts'][number]): boolean {
+    const p = part as Record<string, unknown>
+    return p.type === SYNC_BRIEF_TOOL_TYPE || (partHasBriefEvents(part) && !p.type)
+}
+
+function getBriefOutputFromPart(
+    part: ProjectAiChatMessage['parts'][number],
+): { toolCallId: string; output: { events: BriefEvent[]; title?: string; summary?: string; notes?: string } } | null {
+    if (!isSyncBriefPart(part) || !partHasBriefEvents(part)) return null
+    const p = part as Record<string, unknown>
+    const payload = (p.output ?? p.result) as { events: BriefEvent[]; title?: string; summary?: string; notes?: string }
+    return {
+        toolCallId: p.toolCallId as string,
+        output: payload,
+    }
+}
 
 function getMessageText(message: ProjectAiChatMessage) {
     return message.parts
         .filter(isTextUIPart)
         .map((part) => part.text)
         .join('');
+}
+
+function lastAssistantMessageHasSync(messages: ProjectAiChatMessage[]): boolean {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (msg.role !== 'assistant') continue
+        for (const part of msg.parts ?? []) {
+            if (isSyncBriefPart(part) && partHasBriefEvents(part)) return true
+        }
+        return false
+    }
+    return false
 }
 
 function toDisplayMessage(message: ProjectAiChatMessage): Message {
@@ -42,77 +79,23 @@ function toDisplayMessage(message: ProjectAiChatMessage): Message {
     };
 }
 
-function isSyncProjectBriefToolPart(
-    part: ProjectAiChatMessage['parts'][number],
-): part is SyncProjectBriefToolPart {
-    return (
-        part.type === 'tool-sync_project_brief' &&
-        part.state === 'output-available'
-    );
-}
-
-function shouldApplyEvent(
-    event: BriefEvent,
-    message: ReturnType<typeof useBriefStore.getState>['brief'],
-) {
-    switch (event.action) {
-        case 'brief.identity.confirmed': {
-            const current = message?.customerInfo;
-            if (!current) return true;
-            const keys: (keyof typeof event.data)[] = [
-                'name',
-                'email',
-                'company',
-                'phone',
-                'firstName',
-                'lastName',
-                'industry',
-                'annualBudget',
-            ];
-            return keys.some(
-                (key) => event.data[key] != null && current[key] !== event.data[key],
-            );
-        }
-        case 'brief.intent.confirmed':
-            return (
-                message?.intent?.type !== event.data.type ||
-                message?.intent?.entryChannel !== event.data.entryChannel
-            );
-        case 'brief.product.added':
-            return !message?.lineItems.some(
-                (item) =>
-                    item.productName === event.data.productName &&
-                    item.category === event.data.category &&
-                    item.quantity === event.data.quantity,
-            );
-        case 'brief.timeline.confirmed':
-            return (
-                message?.timeline?.urgency !== event.data.urgency ||
-                message?.timeline?.deadline !== event.data.deadline
-            );
-        case 'brief.project.context_confirmed': {
-            const current = message?.project;
-            const data = event.data as Record<string, unknown>;
-            if (!current) return true;
-            return Object.keys(data).some(
-                (key) =>
-                    data[key] != null &&
-                    (current as Record<string, unknown>)[key] !== data[key],
-            );
-        }
-        default:
-            return true;
-    }
-}
+const UPDATE_FOLLOW_UP = 'Please update the brief with the information I provided.'
 
 export function ProjectAiChatPanel() {
     const [chatId] = useState(() => crypto.randomUUID());
     const processedToolCallIdsRef = useRef<Set<string>>(new Set());
+    /** Set when user sends a message that should complete the only missing field (e.g. email); cleared when we get a sync in the response or when we send the follow-up. */
+    const expectedSyncRef = useRef(false);
 
     const initializeBrief = useBriefStore((state) => state.initializeBrief);
     const handleBriefEvent = useBriefStore((state) => state.handleBriefEvent);
     const setNotes = useBriefStore((state) => state.setNotes);
     const brief = useBriefStore((state) => state.brief);
+
+    const [showNameQuestion] = useState(() => {
+        const existingBrief = useBriefStore.getState().brief;
+        return !existingBrief?.customer?.name && !existingBrief?.customer?.firstName;
+    });
 
     const greetingMessage = useMemo<ProjectAiChatMessage>(
         () => ({
@@ -121,12 +104,14 @@ export function ProjectAiChatPanel() {
             parts: [
                 {
                     type: 'text',
-                    text: "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.",
+                    text: showNameQuestion
+                        ? "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.\n\nTo get started, what's your name?"
+                        : "Hi there! I'm Anthony, your packaging specialist. Let's build your quote together.",
                     state: 'done',
                 },
             ],
         }),
-        [chatId],
+        [chatId, showNameQuestion],
     );
 
     const {messages, sendMessage, status} = useChat<ProjectAiChatMessage>({
@@ -137,52 +122,74 @@ export function ProjectAiChatPanel() {
         }),
     });
 
+    // Ensure brief exists for this chat, then apply sync_project_brief tool-result parts (state === 'output-available', output.events or result.events).
     useEffect(() => {
-        if (brief?.conversationId !== chatId) {
-            initializeBrief(chatId);
+        const state = useBriefStore.getState();
+        if (!state.brief || state.brief.conversationId !== chatId) {
+            state.initializeBrief(chatId);
         }
-    }, [brief?.conversationId, chatId, initializeBrief]);
 
-    // SCALE: shouldApplyEvent must cover any new event type; add cases when new brief events are introduced.
-    useEffect(() => {
         for (const message of messages) {
-            if (message.role !== 'assistant') {
-                continue;
-            }
+            if (message.role !== 'assistant') continue;
 
             for (const part of message.parts ?? []) {
-                if (!isSyncProjectBriefToolPart(part)) {
-                    continue;
+                const parsed = getBriefOutputFromPart(part);
+                if (!parsed || processedToolCallIdsRef.current.has(parsed.toolCallId)) continue;
+
+                const { toolCallId, output } = parsed;
+
+                for (const event of output.events) {
+                    handleBriefEvent(event);
                 }
 
-                if (processedToolCallIdsRef.current.has(part.toolCallId)) {
-                    continue;
+                const briefNow = useBriefStore.getState().brief;
+                if (output.notes && briefNow?.notes !== output.notes) {
+                    setNotes(output.notes);
                 }
 
-                const currentBrief = useBriefStore.getState().brief;
-                for (const event of part.output.events) {
-                    if (shouldApplyEvent(event, currentBrief)) {
-                        handleBriefEvent(event);
-                    }
-                }
-
-                if (
-                    part.output.notes &&
-                    currentBrief?.notes !== part.output.notes
-                ) {
-                    setNotes(part.output.notes);
-                }
-
-                processedToolCallIdsRef.current.add(part.toolCallId);
+                processedToolCallIdsRef.current.add(toolCallId);
+                toast.success(output.title ?? 'Project brief updated', {
+                    description: output.summary,
+                });
             }
         }
-    }, [handleBriefEvent, messages, setNotes]);
+    }, [chatId, handleBriefEvent, messages, setNotes]);
 
     const currentPhase = getCurrentPhase(brief ?? null);
     const missingFields = getMissingFieldsInPhase(brief ?? null, currentPhase);
 
+    // When we expected a sync (user sent e.g. email as only missing field) but the assistant didn't call the tool, send a follow-up once so the brief updates.
+    useEffect(() => {
+        if (status !== 'ready' && status !== 'awaiting_message') return
+        const lastMsg = messages[messages.length - 1]
+        if (!lastMsg || lastMsg.role !== 'assistant') return
+        if (!expectedSyncRef.current) return
+        if (lastAssistantMessageHasSync(messages)) {
+            expectedSyncRef.current = false
+            return
+        }
+        expectedSyncRef.current = false
+        sendMessage(
+            { text: UPDATE_FOLLOW_UP },
+            {
+                body: {
+                    currentPhase,
+                    missingFields,
+                },
+            },
+        )
+    }, [messages, status, currentPhase, missingFields, sendMessage])
+
     const handleSend = useCallback(
         async (content: string) => {
+            const trimmed = content.trim()
+            if (
+                missingFields.length === 1 &&
+                missingFields[0] === 'customer.email' &&
+                EMAIL_LIKE.test(trimmed)
+            ) {
+                expectedSyncRef.current = true
+            }
             await sendMessage(
                 {text: content},
                 {
@@ -196,11 +203,6 @@ export function ProjectAiChatPanel() {
         [sendMessage, currentPhase, missingFields],
     );
 
-    const helpMessagesById = useMemo(
-        () => new Map(messages.map((message) => [message.id, message])),
-        [messages],
-    );
-
     const displayMessages = useMemo(
         () =>
             messages
@@ -209,69 +211,15 @@ export function ProjectAiChatPanel() {
         [messages],
     );
 
-    const renderAfterMessage = useCallback(
-        (message: Message) => {
-            const sourceMessage = helpMessagesById.get(message.id);
-            if (!sourceMessage || sourceMessage.role !== 'assistant') {
-                return null;
-            }
-
-            const syncParts = sourceMessage.parts?.filter(
-                isSyncProjectBriefToolPart,
-            );
-
-            if (!syncParts?.length) {
-                return null;
-            }
-
-            return (
-                <div className="flex flex-col gap-3 pl-11">
-                    {syncParts.map((part) => (
-                        <Card
-                            key={part.toolCallId}
-                            className="gap-4 bg-muted/40 py-0 shadow-none"
-                        >
-                            <CardHeader className="px-4 pt-4">
-                                <CardTitle className="text-sm">
-                                    {part.output.title}
-                                </CardTitle>
-                                <CardDescription>
-                                    {part.output.summary}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex flex-col gap-2 px-4 pb-4">
-                                {part.output.appliedUpdates.map((update) => (
-                                    <p
-                                        key={update}
-                                        className="text-sm text-muted-foreground"
-                                    >
-                                        {update}
-                                    </p>
-                                ))}
-                                {part.output.nextQuestion ? (
-                                    <p className="text-sm font-medium">
-                                        {part.output.nextQuestion}
-                                    </p>
-                                ) : null}
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            );
-        },
-        [helpMessagesById],
-    );
-
     const isTyping = status === 'submitted' || status === 'streaming';
 
     return (
-        <Card className="flex h-full min-h-0 flex-col rounded-none border-0 bg-transparent">
+        <div className="flex h-full min-h-0 flex-col">
             <MessageList
                 messages={displayMessages}
                 isTyping={isTyping}
-                renderAfterMessage={renderAfterMessage}
             />
-            <ChatInput onSend={handleSend} disabled={isTyping} />
-        </Card>
+            <ProjectAiChatInput onSend={handleSend} disabled={isTyping} />
+        </div>
     );
 }
