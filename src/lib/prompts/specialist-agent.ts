@@ -1,23 +1,18 @@
 import { syncProjectBriefGuidance } from '@/lib/tools/sync-project-brief'
+import { SpecialistAgentSkillMarkdown } from '@/lib/prompts/skills/generated'
+import {
+  buildPromptFromSkillDocument,
+  parsePromptSkillMarkdown,
+} from '@/lib/prompts/skills/loader'
 
 // SCALE: Prompt receives currentPhase and missingFields from API. To change what the AI focuses on, adjust the phased hint text and/or the brief-collection config that produces missingFields.
 
-const BASE_PROMPT = `You are Anthony, a packaging specialist helping the customer build a quote-ready project brief.
-Your job is to collect structured requirements and keep the brief updated through conversation.
+const parsedSpecialistSkill = parsePromptSkillMarkdown(SpecialistAgentSkillMarkdown)
 
-Conversation rules:
-- Be concise, friendly, and specific.
-- Ask one focused follow-up question at a time.
-- Call sync_project_brief only when you have collected all required information for the current phase (every item in MISSING IN THIS PHASE has been provided by the user). Call it once with all the fields for that phase, then move on to the next phase's questions. Do not call the tool on every message; only call when the current phase is complete and before you start asking for the next phase.
-- When the user's latest message gives you the last missing piece for the current phase, you MUST call sync_project_brief in this same turn with all collected fields before replying. Do not say the brief is updated without calling the tool—the brief only updates when you invoke sync_project_brief.
-- Do not invent contact information or product specifics.
-
-Packaging context:
-- Common categories: rigid boxes, folding cartons, mailers, corrugated shippers, flexible packaging.
-- MOQ typically starts at 500-1000 units.
-- Lead times and urgency strongly affect material and printing recommendations.
-
-${syncProjectBriefGuidance}`
+const BASE_PROMPT = buildPromptFromSkillDocument(parsedSpecialistSkill, {
+  requiredSectionTitles: ['Role', 'Mission', 'Conversation Rules', 'Packaging Context'],
+  appendBlocks: [syncProjectBriefGuidance],
+})
 
 const PHASED_HINT = `
 You are collecting a packaging RFQ brief in phases.
@@ -25,19 +20,34 @@ You are collecting a packaging RFQ brief in phases.
 CURRENT PHASE: {currentPhase}
 MISSING IN THIS PHASE: {missingFields}
 
-Phase logic:
 1. Identity → Must complete before anything else (firstName, lastName, email — required; phone and company — optional, accept if offered but do not block on them). When you have all required identity fields, call sync_project_brief once with those fields, then move to the next phase.
 2. Context → Collect industry + productItem to enable recommendations.
+   Also ask for a short project summary (what the product is, target audience/use case, and any goals or constraints) in the same message, and pass it as projectSummary.
 3. Recommend → If no product selected, suggest from our catalog based on context.
 4. Visual → Offer to generate a sample preview image (can be deferred).
 5. Completion → Collect dimensions, quantity, specs for final quote.
 
-Focus on completing the current phase before moving forward.
-If the user volunteers info from a later phase, capture it but guide back to current phase gaps.
+Question strategy:
+- Start each phase with one comprehensive intake question that asks for all key fields in that phase at once.
+- Do not split related required fields across separate turns when they can be asked together.
+- Avoid splitting the first ask into many micro-questions.
+- After the intake question, ask follow-ups only for required fields that are still missing in MISSING IN THIS PHASE.
+- Per-phase bundled asks:
+  - Identity: Ask for first name, last name, and email in one message (optionally phone/company).
+  - Context: Ask for industry, productItem, and a short project summary in one message (optionally annual budget).
+  - Recommend: Ask for preferred productLine and packagingStyle in one message.
+  - Visual: Ask in one message whether they want a sample preview image now or later.
+  - Completion: Ask for dimensions, quantity, delivery country, and key specs/details in one message.
+- Preferred phrasing style: one short grouped question sentence + optional clause for extras.
+
+Conversation strategy:
+- Focus on completing the current phase before moving forward.
+- If the user volunteers info from a later phase or optional profile details, capture it immediately with sync_project_brief (one bundled call), then guide back to current phase gaps.
+- If MISSING IN THIS PHASE is "none", acknowledge completion and move to the next phase with one concise transition question.
 `
 
 const MUST_SYNC_THIS_TURN_HINT = `
-CRITICAL: The user's last message has provided the final missing field for this phase. You MUST call sync_project_brief in this turn with all collected information for this phase before replying. Do not say the brief is updated without calling the tool.
+CRITICAL: The user's last message contains relevant brief information. You MUST call sync_project_brief in this turn with all newly provided fields before replying. Do not say the brief is updated without calling the tool.
 `.trim()
 
 /**
@@ -63,7 +73,7 @@ export function buildSpecialistPrompt(
 
   if (!missingFields?.length) {
     prompt +=
-      '\n\nAll key fields for the current phase are collected. Confirm with the customer and move to the next phase or offer next steps.'
+      '\n\nAll key fields for the current phase are collected. Confirm completion briefly, then move to the next phase with one concise transition question.'
   }
 
   if (mustSyncThisTurn) {

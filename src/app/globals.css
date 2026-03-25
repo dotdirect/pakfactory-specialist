@@ -136,5 +136,14 @@
     .shadow-top {
         box-shadow: 0 -8px 20px -8px rgba(141, 141, 141, 0.12);
     }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
 }
 

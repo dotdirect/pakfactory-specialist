@@ -4,12 +4,17 @@ import {useEffect, useState, useCallback} from 'react';
 import {Card} from '@/components/ui/card';
 import {MessageList} from '@/components/chat/message-list';
 import {ChatInput} from '@/components/chat/chat-input';
+import {BriefPanel} from '@/components/project/brief-panel';
+import {ProjectMobileBriefBar} from '@/components/project/project-mobile-brief-bar';
+import {Sheet, SheetContent, SheetHeader, SheetTitle} from '@/components/ui/sheet';
 import {BotpressEngine} from '@/lib/engines/botpress-engine';
+import {isIdentityPhaseComplete} from '@/lib/brief-collection';
 import {useBriefStore} from '@/stores/brief-store';
 import type {ConversationState} from '@/types/conversation';
 
 export function ProjectChatPanel() {
     const [engine] = useState(() => new BotpressEngine());
+    const [isBriefSheetOpen, setIsBriefSheetOpen] = useState(false);
     const [state, setState] = useState<ConversationState>({
         conversationId: null,
         status: 'idle',
@@ -19,6 +24,13 @@ export function ProjectChatPanel() {
 
     const initializeBrief = useBriefStore((state) => state.initializeBrief);
     const handleBriefEvent = useBriefStore((state) => state.handleBriefEvent);
+    const brief = useBriefStore((state) => state.brief);
+
+    const preparedFor =
+        brief?.customer?.firstName || brief?.customer?.lastName
+            ? `${brief?.customer?.firstName ?? ''} ${brief?.customer?.lastName ?? ''}`.trim()
+            : brief?.customer?.name?.trim() || 'you';
+    const showBriefBar = isIdentityPhaseComplete(brief);
 
     useEffect(() => {
         const init = async () => {
@@ -57,16 +69,37 @@ export function ProjectChatPanel() {
     );
 
     return (
-        <Card className="flex flex-col h-full border-0 rounded-none bg-transparent">
+        <Card className="flex h-full flex-col rounded-none border-0 bg-transparent">
             <MessageList
                 messages={state.messages}
                 isTyping={state.isTyping}
                 onChoiceSelect={handleChoiceSelect}
             />
-            <ChatInput
-                onSend={handleSend}
-                disabled={state.status !== 'active'}
-            />
+            <div className="shrink-0">
+                {showBriefBar && (
+                    <ProjectMobileBriefBar
+                        preparedForLabel={`Brief is being prepared for ${preparedFor} ...`}
+                        onOpen={() => setIsBriefSheetOpen(true)}
+                    />
+                )}
+                <ChatInput
+                    onSend={handleSend}
+                    disabled={state.status !== 'active'}
+                />
+            </div>
+            <Sheet open={isBriefSheetOpen} onOpenChange={setIsBriefSheetOpen}>
+                <SheetContent
+                    side="bottom"
+                    className="h-full rounded-t-3xl border-x-0 border-b-0 p-0 md:h-auto"
+                >
+                    <SheetHeader className="border-b">
+                        <SheetTitle>Project Brief</SheetTitle>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-hidden bg-background-alt">
+                        <BriefPanel />
+                    </div>
+                </SheetContent>
+            </Sheet>
         </Card>
     );
 }

@@ -31,12 +31,12 @@ export function MessageList({
     const choices = lastMessage?.metadata?.choices;
 
     return (
-        <div className="flex-1 min-h-0 flex flex-col relative">
+        <div className="flex-1 min-h-0 flex flex-col relative px-5 md:px-0">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-14 bg-linear-to-b from-background-alt to-transparent" />
             <div
                 ref={scrollRef}
-                className="flex-1 min-h-0 overflow-y-auto pt-16 pb-4 relative"
+                className="no-scrollbar relative flex-1 min-h-0 overflow-y-auto pt-16 pb-4"
             >
-                {/* <div className="absolute w-full z-10 h-16 shrink-0 bg-linear-to-t from-background-alt/50 80 to-background-alt blur-sm "></div> */}
                 <div className="flex flex-col gap-4">
                     {messages.map((message) => (
                         <Fragment key={message.id}>

@@ -41,6 +41,7 @@ export const ProjectContextSchema = z.object({
   productLine: z.string().optional(),
   packagingStyle: z.string().optional(),
   deliveryCountry: z.string().optional(),
+  summary: z.string().optional(),
   details: z.string().optional(),
   quantity: z.array(z.coerce.number().int().positive()).optional(),
   dimensions: z

@@ -25,6 +25,11 @@ function isPhase1Complete(brief: TechnicalBrief): boolean {
   return hasName && Boolean(c.email)
 }
 
+export function isIdentityPhaseComplete(brief: TechnicalBrief | null): boolean {
+  if (!brief) return false
+  return isPhase1Complete(brief)
+}
+
 /** Phase 2: Context — 30–50% */
 function isPhase2Complete(brief: TechnicalBrief): boolean {
   const c = brief.customer
@@ -47,6 +52,7 @@ function isPhase4Complete(brief: TechnicalBrief): boolean {
 function isPhase5Complete(brief: TechnicalBrief): boolean {
   const p = brief.project
   return (
+    Boolean(p?.summary) &&
     Boolean(p?.dimensions) &&
     Boolean(p?.quantity?.length) &&
     Boolean(p?.deliveryCountry) &&
@@ -80,6 +86,7 @@ const PHASE_3_FIELDS = ['project.productLine', 'project.packagingStyle'] as cons
 const PHASE_4_FIELDS = ['project.projectPDF'] as const
 
 const PHASE_5_FIELDS = [
+  'project.summary',
   'project.dimensions',
   'project.quantity',
   'project.deliveryCountry',
@@ -118,6 +125,7 @@ function getMissingForPhase4(brief: TechnicalBrief): string[] {
 
 function getMissingForPhase5(brief: TechnicalBrief): string[] {
   const missing: string[] = []
+  if (!brief.project?.summary) missing.push('project.summary')
   if (!brief.project?.dimensions) missing.push('project.dimensions')
   if (!brief.project?.quantity?.length) missing.push('project.quantity')
   if (!brief.project?.deliveryCountry) missing.push('project.deliveryCountry')
@@ -172,13 +180,14 @@ export function getCompletionPercentage(brief: TechnicalBrief | null): number {
   if (!isPhase5Complete(brief)) {
     const p = brief.project
     const done = [
+      p?.summary,
       p?.dimensions,
       p?.quantity?.length,
       p?.deliveryCountry,
       p?.customizations?.materials || p?.customizations?.finishes,
       p?.details,
     ].filter(Boolean).length
-    return 75 + Math.round((done / 5) * 25)
+    return 75 + Math.round((done / 6) * 25)
   }
   return 100
 }

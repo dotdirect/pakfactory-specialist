@@ -11,6 +11,9 @@ export function BriefPanelProjectDetail({brief}: BriefPanelProjectDetailProps) {
         ? `${brief.project?.productItem ?? ''}`.trim()
         : 'N/A';
     const industry = brief.customer?.industry ?? 'N/A';
+    const projectSummary =
+        brief.project?.summary?.trim() ||
+        'Project summary will appear here as we collect your requirements.';
 
     return (
         <Card className="border-none shadow-none display-flex flex-row grid-cols-2 gap-1 items-start">
@@ -48,26 +51,7 @@ export function BriefPanelProjectDetail({brief}: BriefPanelProjectDetailProps) {
                         Quick Summary
                     </span>
                     <span className="text-xs text-muted-foreground">
-                        Bonbon oat cake marzipan fruitcake jujubes bonbon.
-                        Chocolate cake oat cake chupa chups oat cake chupa
-                        chups. Gingerbread pudding soufflé pastry sweet danish
-                        chupa chups. Candy canes candy lollipop cake apple pie
-                        gummies marshmallow. Chocolate cake sugar plum bear claw
-                        chocolate cake croissant jujubes bear claw jelly
-                        marzipan. Wafer icing tiramisu pie tootsie roll gummi
-                        bears croissant cupcake. Biscuit gummies donut candy
-                        canes macaroon. Cotton candy wafer oat cake caramels
-                        jujubes candy pie jelly. Brownie pie halvah chocolate
-                        topping jelly pudding dragée. Sweet roll gingerbread
-                        dessert bear claw oat cake cupcake shortbread. Ice cream
-                        lemon drops soufflé tart chupa chups gummi bears
-                        caramels. Macaroon tart croissant lollipop soufflé
-                        shortbread soufflé wafer. Powder sweet bear claw tart
-                        chupa chups. Jelly beans topping topping croissant
-                        sweet. Fruitcake caramels tiramisu cake halvah ice
-                        cream. Cake pudding cotton candy muffin cupcake. Sesame
-                        snaps pudding jelly-o shortbread jujubes jujubes
-                        chocolate cake.
+                        {projectSummary}
                     </span>
                 </div>
             </CardContent>

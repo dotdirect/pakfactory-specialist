@@ -3,6 +3,12 @@ import { z } from 'zod'
 import { getModel } from '@/lib/agents/model'
 import { csAgentConfig } from '@/lib/agents/cs-agent'
 import { csAgentSystemPrompt } from '@/lib/prompts/cs-agent'
+import {
+  buildRetrievalFingerprint,
+  helpResponseCacheKey,
+} from '@/lib/rag/help-cache'
+import type { KnowledgeRetrievalResult } from '@/lib/rag/pinecone-retrieval'
+import { retrieveHelpKnowledge } from '@/lib/rag/pinecone-retrieval'
 import type { StartProjectInquiryOutput } from '@/lib/tools/start-project-inquiry'
 import type { ShowPricingCalculatorOutput } from '@/lib/tools/show-pricing-calculator'
 import type { HelpChatMessage } from '@/types/help-chat'
@@ -39,26 +45,11 @@ function checkHelpRateLimit(clientId: string): boolean {
   return true
 }
 
-/** In-memory cache keyed by normalized question hash. Edge isolate-scoped. */
+/** In-memory cache keyed by question + retrieval fingerprint. Edge isolate-scoped. */
 const helpResponseCache = new Map<
   string,
   { parts: HelpChatMessage['parts']; expires: number }
 >()
-
-function normalizeQuestion(question: string): string {
-  return question.trim().toLowerCase().replace(/\s+/g, ' ')
-}
-
-async function questionCacheKey(question: string): Promise<string> {
-  const normalized = normalizeQuestion(question)
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(normalized),
-  )
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
 
 const HelpRequestSchema = z.object({
   question: z.string().min(1).max(4000).trim(),
@@ -90,15 +81,6 @@ function shouldForceProjectInquiry(question: string) {
   const lower = question.toLowerCase()
   return PROJECT_INQUIRY_KEYWORDS.some((kw) => lower.includes(kw))
 }
-
-/** Demo sources shown until real RAG/knowledge-base is wired up. */
-const DEMO_SOURCES: Array<{ id: string; url: string; title: string }> = [
-  {
-    id: 'demo-1',
-    url: 'https://feather-canidae-1dc.notion.site/What-printing-methods-are-available-320eb5db19ec806c863cd3a7124a1dea',
-    title: 'What printing methods are available? — PakSpecialist',
-  },
-]
 
 type ProjectInquiryResult = {
   toolCallId: string
@@ -179,7 +161,42 @@ export async function POST(req: Request) {
     )
   }
 
-  const cacheKey = await questionCacheKey(question)
+  const toolChoice =
+    shouldForcePricingCalculator(question)
+      ? { type: 'tool' as const, toolName: 'show_pricing_calculator' as const }
+      : shouldForceProjectInquiry(question)
+        ? { type: 'tool' as const, toolName: 'start_project_inquiry' as const }
+        : csAgentConfig.toolChoice
+
+  const retrievalStart = Date.now()
+  let ragContext = ''
+  let ragSources: Array<{ id: string; url: string; title?: string }> = []
+  let retrieval: KnowledgeRetrievalResult | null = null
+  let hadRetrievalError = false
+  try {
+    retrieval = await retrieveHelpKnowledge(question)
+    ragContext = retrieval?.context ?? ''
+    ragSources = retrieval?.sources ?? []
+    const tookMs = Date.now() - retrievalStart
+    console.info('[help-rag] retrieval', {
+      tookMs,
+      contextChars: ragContext.length,
+      sourceCount: ragSources.length,
+      hitCount: retrieval?.hitCount ?? 0,
+    })
+  } catch (error) {
+    hadRetrievalError = true
+    const tookMs = Date.now() - retrievalStart
+    console.error('[help-rag] retrieval_failed', {
+      tookMs,
+      error: error instanceof Error ? error.message : 'unknown error',
+    })
+  }
+
+  const cacheKey = await helpResponseCacheKey(
+    question,
+    buildRetrievalFingerprint(retrieval, hadRetrievalError),
+  )
   const cached = helpResponseCache.get(cacheKey)
   if (cached && cached.expires > now) {
     return Response.json({
@@ -191,16 +208,20 @@ export async function POST(req: Request) {
     })
   }
 
-  const toolChoice =
-    shouldForcePricingCalculator(question)
-      ? { type: 'tool' as const, toolName: 'show_pricing_calculator' as const }
-      : shouldForceProjectInquiry(question)
-        ? { type: 'tool' as const, toolName: 'start_project_inquiry' as const }
-        : csAgentConfig.toolChoice
+  const systemPrompt = ragContext.length > 0
+    ? `${csAgentSystemPrompt}
+
+Knowledge snippets:
+${ragContext}
+
+Instruction:
+- Prefer the provided knowledge snippets for factual details.
+- If the snippets do not answer the question, say that clearly and ask a concise follow-up.`
+    : csAgentSystemPrompt
 
   const result = await generateText({
     model: getModel(),
-    system: csAgentSystemPrompt,
+    system: systemPrompt,
     messages: [{ role: 'user', content: question }],
     ...csAgentConfig,
     toolChoice,
@@ -230,7 +251,7 @@ export async function POST(req: Request) {
     .filter((s): s is typeof s & { url: string } => 'url' in s && typeof (s as { url?: string }).url === 'string')
     .map((s) => ({ id: s.id, url: (s as { url: string }).url, title: (s as { title?: string }).title ?? undefined }))
   const sources: Array<{ id: string; url: string; title?: string }> =
-    mappedSources.length > 0 ? mappedSources : DEMO_SOURCES
+    mappedSources.length > 0 ? mappedSources : ragSources
 
   const message = buildAssistantMessage(
     crypto.randomUUID(),
