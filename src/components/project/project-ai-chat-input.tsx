@@ -9,7 +9,7 @@ import {
     type KeyboardEvent,
 } from 'react';
 import {Button} from '@/components/ui/button';
-import {Input} from '@/components/ui/input';
+import {Textarea} from '@/components/ui/textarea';
 import {Separator} from '@/components/ui/separator';
 import {useSpeechRecognition} from '@/hooks/use-speech-recognition';
 import {AudioWaveform, Mic, Plus, Send} from 'lucide-react';
@@ -32,7 +32,7 @@ export function ProjectAiChatInput({
 }: ProjectAiChatInputProps) {
     const [value, setValue] = useState('');
     const [isUploading, setIsUploading] = useState(false);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const accumulatedTranscriptRef = useRef('');
     const ACCEPTED_UPLOAD_EXTENSIONS = ['pdf', 'doc', 'docx'] as const;
@@ -146,7 +146,7 @@ export function ProjectAiChatInput({
         [disabled, handleUpload, isUploading, onUpload],
     );
 
-    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSubmit();
@@ -155,10 +155,10 @@ export function ProjectAiChatInput({
 
     return (
         <div className="shrink-0">
-            <Separator />
+            {/* <Separator /> */}
             <div className="flex flex-col gap-3 p-4">
                 <div
-                    className="flex items-center gap-1 rounded-full border border-input px-2 py-1.5 shadow-sm dark:bg-input/20 bg-white/70"
+                    className="flex items-end gap-1 rounded-3xl border border-input px-4 py-2 shadow-md dark:bg-input/20 bg-white/70"
                     onDrop={handleDrop}
                     onDragOver={(event) => event.preventDefault()}
                 >
@@ -183,15 +183,15 @@ export function ProjectAiChatInput({
                     >
                         <Plus className="size-4" />
                     </Button> */}
-                    <Input
+                    <Textarea
                         ref={inputRef}
-                        type="text"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
                         disabled={disabled || isUploading}
-                        className="h-8 min-w-0 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                        rows={1}
+                        className="min-h-[32px] max-h-40 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 text-base md:text-base focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin"
                         aria-label="Message input"
                     />
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CustomerSchema, IntentSchema, ProductSpecsSchema, ProjectContextSchema, TimelineSchema } from './brief'
+import { BillingSchema, CustomerSchema, IntentSchema, ProductSpecsSchema, ProjectContextSchema, TimelineSchema } from './brief'
 
 // SCALE: New fields need matching event payloads. Keep in sync with brief.ts and sync-project-brief tool output.
 
@@ -17,9 +17,12 @@ export const BriefEventSchema = z.discriminatedUnion('action', [
     data: z.object({
       productId: z.string(),
       productName: z.string(),
+      handle: z.string().optional(),
       category: z.string(),
       quantity: z.number().int().positive().default(1),
+      quantities: z.array(z.number().int().positive()).optional(),
       imageUrl: z.string().url().optional(),
+      specs: ProductSpecsSchema.optional(),
     }),
   }),
   z.object({
@@ -42,6 +45,10 @@ export const BriefEventSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('brief.project.context_confirmed'),
     data: ProjectContextSchema.partial(),
+  }),
+  z.object({
+    action: z.literal('brief.billing.confirmed'),
+    data: BillingSchema,
   }),
   z.object({
     action: z.literal('brief.submitted'),

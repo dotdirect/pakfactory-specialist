@@ -50,7 +50,7 @@ export function BriefPanelProjectDetail({brief}: BriefPanelProjectDetailProps) {
                     <span className="text-xs  text-gray-400">
                         Quick Summary
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground ">
                         {projectSummary}
                     </span>
                 </div>

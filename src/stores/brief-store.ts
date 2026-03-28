@@ -2,12 +2,29 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { v4 as uuidv4 } from 'uuid'
-import type { TechnicalBrief, LineItem, Customer, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus } from '@/types/brief'
+import type { TechnicalBrief, LineItem, Customer, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus, Billing } from '@/types/brief'
 import type { BriefEvent } from '@/types/brief-events'
+import type { StepId, FlowId } from '@/lib/steps/types'
+import { FLOW_CONFIGS, getNextStepInFlow } from '@/lib/steps/flow-configs'
+
+export type RagDebugData = {
+  query: string
+  industry?: string
+  filterUsed: boolean
+  products: Array<{ name: string; score: number; category: string }>
+}
 
 interface BriefState {
   brief: TechnicalBrief | null
   lastUpdatedField: string | null
+
+  // ─── Debug ─────────────────────────────────────────────────────────────────
+  ragDebug: RagDebugData | null
+  setRagDebug: (data: RagDebugData) => void
+
+  // ─── Structured step flow state ───────────────────────────────────────────
+  currentFlow: FlowId
+  currentStep: StepId
 
   initializeBrief: (conversationId?: string) => void
   updateCustomerInfo: (info: Partial<Customer>) => void
@@ -17,11 +34,18 @@ interface BriefState {
   updateLineItemSpecs: (lineItemId: string, specs: ProductSpecs) => void
   updateTimeline: (timeline: Timeline) => void
   updateProjectContext: (context: Partial<ProjectContext>) => void
+  updateBilling: (billing: Partial<Billing>) => void
   setStatus: (status: BriefStatus) => void
   setNotes: (notes: string) => void
   handleBriefEvent: (event: BriefEvent) => void
   resetBrief: () => void
   getCompletionPercentage: () => number
+
+  // ─── Flow navigation ──────────────────────────────────────────────────────
+  /** Initialize the flow and reset to its first step. Call on page mount. */
+  initFlow: (flowId: FlowId) => void
+  /** Advance to the next step. Pass a branch override (e.g. 'product-select' | 'submit') for branching steps. */
+  advanceStep: (override?: StepId | 'submit') => void
 }
 
 export const useBriefStore = create<BriefState>()(
@@ -30,6 +54,10 @@ export const useBriefStore = create<BriefState>()(
       immer((set, get) => ({
         brief: null,
         lastUpdatedField: null,
+        ragDebug: null,
+        setRagDebug: (data) => set({ ragDebug: data }),
+        currentFlow: 'rfq-full',
+        currentStep: 'profile',
 
         initializeBrief: (conversationId) => {
           set((state) => {
@@ -133,6 +161,19 @@ export const useBriefStore = create<BriefState>()(
           })
         },
 
+        updateBilling: (billing) => {
+          set((state) => {
+            if (state.brief) {
+              state.brief.billing = {
+                ...state.brief.billing,
+                ...billing,
+              }
+              state.brief.updatedAt = new Date().toISOString()
+              state.lastUpdatedField = 'billing'
+            }
+          })
+        },
+
         setStatus: (status) => {
           set((state) => {
             if (state.brief) {
@@ -155,7 +196,7 @@ export const useBriefStore = create<BriefState>()(
           })
         },
 
-        // SCALE: New event types need a case in handleBriefEvent. Completion % and "what's missing" should align with brief-collection config (phases/required fields).
+        // SCALE: New event types need a case here. Keep in sync with brief-events.ts.
         handleBriefEvent: (event) => {
           const actions = get()
           switch (event.action) {
@@ -169,9 +210,12 @@ export const useBriefStore = create<BriefState>()(
               actions.addLineItem({
                 productId: event.data.productId,
                 productName: event.data.productName,
+                handle: event.data.handle,
                 category: event.data.category,
                 quantity: event.data.quantity,
+                quantities: event.data.quantities,
                 imageUrl: event.data.imageUrl,
+                specs: event.data.specs,
               })
               break
             case 'brief.product.removed':
@@ -186,6 +230,9 @@ export const useBriefStore = create<BriefState>()(
             case 'brief.project.context_confirmed':
               actions.updateProjectContext(event.data)
               break
+            case 'brief.billing.confirmed':
+              actions.updateBilling(event.data)
+              break
             case 'brief.submitted':
               actions.setStatus('submitted')
               break
@@ -199,7 +246,7 @@ export const useBriefStore = create<BriefState>()(
           })
         },
 
-        // SCALE: Weights and buckets should align with brief-collection config when phased strategy is implemented.
+        // SCALE: Weights should align with brief-collection config.
         getCompletionPercentage: () => {
           const brief = get().brief
           if (!brief) return 0
@@ -214,6 +261,29 @@ export const useBriefStore = create<BriefState>()(
           if (brief.timeline) completed++
 
           return Math.round((completed / total) * 100)
+        },
+
+        // ─── Flow navigation ────────────────────────────────────────────────
+
+        initFlow: (flowId) => {
+          set((state) => {
+            const flow = FLOW_CONFIGS[flowId]
+            state.currentFlow = flowId
+            state.currentStep = flow.steps[0]!
+          })
+        },
+
+        advanceStep: (override) => {
+          const { currentFlow, currentStep } = get()
+          const next = override ?? getNextStepInFlow(currentFlow, currentStep)
+
+          if (next === 'submit') {
+            get().setStatus('submitted')
+          } else {
+            set((state) => {
+              state.currentStep = next
+            })
+          }
         },
       }))
     ),

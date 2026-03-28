@@ -60,3 +60,18 @@ export function parseProjectDocUploadEnv(): ProjectDocUploadEnv | null {
 export function parseProjectDocUploadEnvStrict(): ProjectDocUploadEnv {
   return ProjectDocUploadEnvSchema.parse(process.env)
 }
+
+/**
+ * Server-only env for n8n lead submission webhook.
+ * Optional: if missing, lead submission is skipped without crashing.
+ */
+export const N8nEnvSchema = z.object({
+  N8N_LEAD_WEBHOOK_URL: z.string().url(),
+})
+
+export type N8nEnv = z.infer<typeof N8nEnvSchema>
+
+export function parseN8nEnv(): N8nEnv | null {
+  const parsed = N8nEnvSchema.safeParse(process.env)
+  return parsed.success ? parsed.data : null
+}
