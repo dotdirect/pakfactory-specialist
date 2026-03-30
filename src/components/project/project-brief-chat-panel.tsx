@@ -61,12 +61,15 @@ export function ProjectBriefChatPanel({
             const lastMessage = messages[messages.length - 1];
             if (!lastMessage || message.id !== lastMessage.id) return null;
             return (
-                <ProductRecommendationCards
-                    products={recommendationData.products}
-                    onConfirm={handleRecommendationConfirm}
-                    onSkip={handleRecommendationSkip}
-                    onRequestMore={handleRequestMoreRecommendations}
-                />
+                <div className="ml-11">
+                    <ProductRecommendationCards
+                        products={recommendationData.products}
+                        onConfirm={handleRecommendationConfirm}
+                        onSkip={handleRecommendationSkip}
+                        onRequestMore={handleRequestMoreRecommendations}
+                        selectionMode={flowId === 'rfq-full' ? 'single' : 'multiple'}
+                    />
+                </div>
             );
         },
         [

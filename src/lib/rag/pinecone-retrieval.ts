@@ -1,6 +1,5 @@
 import { embed } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { google } from '@ai-sdk/google'
+import { getEmbeddingModel } from '@/lib/agents/model'
 import {
   getNamespaceFromEnv,
   parseRetrievalEnv,
@@ -30,11 +29,6 @@ export type KnowledgeRetrievalResult = {
   hitCount: number
   /** Sorted vector IDs from Pinecone — used for cache fingerprinting. */
   chunkIds: string[]
-}
-
-function getEmbeddingModel(provider: 'openai' | 'google', model: string) {
-  if (provider === 'google') return google.textEmbeddingModel(model)
-  return openai.embedding(model)
 }
 
 function pickString(
@@ -101,12 +95,9 @@ export function mapMatchesToKnowledge(matches: PineconeMatch[]): KnowledgeRetrie
   }
 }
 
-export async function embedQuery(
-  text: string,
-  env: RetrievalEnv,
-): Promise<number[]> {
+export async function embedQuery(text: string): Promise<number[]> {
   const { embedding } = await embed({
-    model: getEmbeddingModel(env.AI_EMBEDDING_PROVIDER, env.AI_EMBEDDING_MODEL),
+    model: getEmbeddingModel(),
     value: text,
   })
   return embedding
@@ -116,7 +107,7 @@ export async function retrieveRelevantChunks(
   question: string,
   env: RetrievalEnv,
 ): Promise<KnowledgeRetrievalResult> {
-  const embedding = await embedQuery(question, env)
+  const embedding = await embedQuery(question)
 
   const body: Record<string, unknown> = {
     vector: embedding,

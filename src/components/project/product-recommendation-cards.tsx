@@ -13,6 +13,7 @@ interface ProductRecommendationCardsProps {
   onConfirm: (selected: RecommendedProduct[]) => void
   onSkip: () => void
   onRequestMore: () => void
+  selectionMode?: 'single' | 'multiple'
 }
 
 export function ProductRecommendationCards({
@@ -20,11 +21,15 @@ export function ProductRecommendationCards({
   onConfirm,
   onSkip,
   onRequestMore,
+  selectionMode = 'multiple',
 }: ProductRecommendationCardsProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const toggleSelect = useCallback((productId: string) => {
     setSelectedIds((prev) => {
+      if (selectionMode === 'single') {
+        return prev.has(productId) ? new Set() : new Set([productId])
+      }
       const next = new Set(prev)
       if (next.has(productId)) {
         next.delete(productId)
@@ -33,7 +38,7 @@ export function ProductRecommendationCards({
       }
       return next
     })
-  }, [])
+  }, [selectionMode])
 
   const handleConfirm = useCallback(() => {
     const selected = products.filter((p) => selectedIds.has(p.productId))
@@ -43,7 +48,9 @@ export function ProductRecommendationCards({
   return (
     <div className="flex flex-col gap-3 w-full">
       <p className="text-sm text-muted-foreground">
-        Please select all that apply (you can choose multiple):
+        {selectionMode === 'single'
+          ? 'Please select the product that best fits your project:'
+          : 'Please select all that apply (you can choose multiple):'}
       </p>
 
       {products.map((product) => {
@@ -81,12 +88,17 @@ export function ProductRecommendationCards({
                 <span className="font-semibold text-sm leading-tight">
                   {product.productName}
                 </span>
+                {product.sku && (
+                  <span className="text-xs text-muted-foreground">
+                    SKU: {product.sku}
+                  </span>
+                )}
                 <Badge variant="secondary" className="text-xs shrink-0">
                   {product.category}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground line-clamp-2">
-                {product.description}
+                {product.recommendationNote || product.description}
               </p>
               <div className="flex items-center gap-3 mt-1">
                 <Button
@@ -124,7 +136,9 @@ export function ProductRecommendationCards({
       <div className="flex items-center gap-3 mt-2">
         {selectedIds.size > 0 && (
           <Button size="sm" onClick={handleConfirm}>
-            Continue with {selectedIds.size} selected
+            {selectionMode === 'single'
+              ? 'Continue with selection'
+              : `Continue with ${selectedIds.size} selected`}
           </Button>
         )}
         <Button size="sm" variant="outline" onClick={onSkip}>

@@ -121,11 +121,20 @@ export function ProjectBriefDebugFab() {
                       </div>
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">Filter</p>
-                        <Badge variant={ragDebug.filterUsed ? 'default' : 'secondary'} className="text-xs">
-                          {ragDebug.filterUsed ? 'Applied' : 'Fallback (unfiltered)'}
+                        <Badge variant={ragDebug.filterTier === 'alias' ? 'default' : 'secondary'} className="text-xs">
+                          {ragDebug.filterTier === 'alias' ? 'Alias match' : 'Unfiltered'}
                         </Badge>
                       </div>
                     </div>
+
+                    {ragDebug.aliasesUsed && ragDebug.aliasesUsed.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Aliases sent</p>
+                        <p className="text-xs font-mono bg-muted rounded p-2 break-all">
+                          {ragDebug.aliasesUsed.join(', ')}
+                        </p>
+                      </div>
+                    )}
 
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-2">

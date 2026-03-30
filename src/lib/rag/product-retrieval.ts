@@ -1,7 +1,7 @@
 import { embed } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { google } from '@ai-sdk/google'
+import { getEmbeddingModel } from '@/lib/agents/model'
 import { parseRetrievalEnv, type RetrievalEnv } from '@/lib/env/server'
+import { getIndustryFilterValues } from './industry-aliases'
 
 /** A single product recommendation returned from the catalog index. */
 export type ProductRecommendation = {
@@ -10,6 +10,7 @@ export type ProductRecommendation = {
   handle: string
   category: string
   description: string
+  sku?: string
   imageUrl?: string
   score: number
 }
@@ -17,6 +18,8 @@ export type ProductRecommendation = {
 export type ProductRetrievalResult = {
   products: ProductRecommendation[]
   hitCount: number
+  filterTier?: 'alias' | 'none'
+  aliasesUsed?: string[]
 }
 
 type PineconeMatch = { id: string; score?: number; metadata?: Record<string, unknown> }
@@ -28,7 +31,8 @@ const PRODUCT_NAMESPACE = 'products'
 export type RetrievalDebugInfo = {
   query: string
   industry?: string
-  filterUsed: boolean
+  filterTier: 'alias' | 'none'
+  aliasesUsed?: string[]
   products: Array<{ name: string; score: number; category: string }>
   timestamp: string
 }
@@ -40,11 +44,12 @@ export function getLastRetrievalDebug(): RetrievalDebugInfo | null {
   return _global.__ragDebug ?? null
 }
 
-function saveDebug(query: string, industry: string | undefined, filterUsed: boolean, result: ProductRetrievalResult) {
+function saveDebug(query: string, industry: string | undefined, filterTier: 'alias' | 'none', result: ProductRetrievalResult, aliasesUsed?: string[]) {
   _global.__ragDebug = {
     query,
     industry,
-    filterUsed,
+    filterTier,
+    aliasesUsed,
     products: result.products.map((p) => ({ name: p.productName, score: p.score, category: p.category })),
     timestamp: new Date().toISOString(),
   }
@@ -59,15 +64,11 @@ function parseMatches(matches: PineconeMatch[]): ProductRetrievalResult {
       handle: pickString(m.metadata, ['handle', 'slug', 'url']) ?? m.id,
       category: pickString(m.metadata, ['category', 'type', 'productType']) ?? 'packaging',
       description: pickString(m.metadata, ['description', 'shortDescription', 'body', 'text', 'chunk_text']) ?? '',
+      sku: pickString(m.metadata, ['sku', 'SKU', 'product_sku', 'variant_sku']),
       imageUrl: pickString(m.metadata, ['imageUrl', 'image_url', 'primaryImageUrl', 'image', 'thumbnail']),
       score: m.score ?? 0,
     }))
   return { products, hitCount: products.length }
-}
-
-function getEmbeddingModel(provider: 'openai' | 'google', model: string) {
-  if (provider === 'google') return google.textEmbeddingModel(model)
-  return openai.embedding(model)
 }
 
 function pickString(
@@ -111,8 +112,7 @@ export async function retrieveProductRecommendationsWithEnv(
   if (!query.trim()) return { products: [], hitCount: 0 }
 
   try {
-    const embeddingModel = getEmbeddingModel(env.AI_EMBEDDING_PROVIDER, env.AI_EMBEDDING_MODEL)
-    const { embedding } = await embed({ model: embeddingModel, value: query })
+    const { embedding } = await embed({ model: getEmbeddingModel(), value: query })
 
     const queryPinecone = async (filter?: Record<string, unknown>) => {
       return fetch(`${env.PINECONE_HOST}/query`, {
@@ -131,20 +131,19 @@ export async function retrieveProductRecommendationsWithEnv(
       })
     }
 
-    // Try with industry metadata filter first, fallback to unfiltered if no results.
-    // Industry is stored as a JSON array string in Pinecone, so we try $eq first
-    // (works if stored as plain string) and fall back to no filter.
+    // Try with industry alias filter ($in) first, fallback to unfiltered if no results.
     let res: Response
     if (industry) {
-      res = await queryPinecone({ industry: { $eq: industry } })
+      const aliasValues = getIndustryFilterValues(industry)
+      res = await queryPinecone({ industry: { $in: aliasValues } })
       const data = (await res.json()) as { matches?: PineconeMatch[] }
       if ((data.matches ?? []).length > 0) {
         const result = parseMatches(data.matches ?? [])
-        saveDebug(query, industry, true, result)
-        return result
+        saveDebug(query, industry, 'alias', result, aliasValues)
+        return { ...result, filterTier: 'alias' as const, aliasesUsed: aliasValues }
       }
       // Fallback: no filter, rely on semantic search (industry is already in the query text)
-      console.log(`[product-retrieval] Industry filter "${industry}" returned 0 results, falling back to unfiltered`)
+      console.log(`[product-retrieval] Industry alias filter "${industry}" (${aliasValues.length} values) returned 0 results, falling back to unfiltered`)
       res = await queryPinecone()
     } else {
       res = await queryPinecone()
@@ -157,8 +156,8 @@ export async function retrieveProductRecommendationsWithEnv(
 
     const data = (await res.json()) as { matches?: PineconeMatch[] }
     const result = parseMatches(data.matches ?? [])
-    saveDebug(query, industry, false, result)
-    return result
+    saveDebug(query, industry, 'none', result)
+    return { ...result, filterTier: 'none' as const }
   } catch (err) {
     console.error('[product-retrieval] Error retrieving products:', err)
     return { products: [], hitCount: 0 }

@@ -10,7 +10,8 @@ import { FLOW_CONFIGS, getNextStepInFlow } from '@/lib/steps/flow-configs'
 export type RagDebugData = {
   query: string
   industry?: string
-  filterUsed: boolean
+  filterTier: 'alias' | 'none'
+  aliasesUsed?: string[]
   products: Array<{ name: string; score: number; category: string }>
 }
 

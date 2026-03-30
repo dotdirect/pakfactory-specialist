@@ -20,6 +20,8 @@ export const RecommendedProductSchema = z.object({
   handle: z.string().optional(),
   category: z.string(),
   description: z.string(),
+  sku: z.string().optional(),
+  recommendationNote: z.string().optional(),
   imageUrl: z.string().optional(),
   score: z.number(),
 })

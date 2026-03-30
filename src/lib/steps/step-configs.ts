@@ -181,7 +181,7 @@ export const STEP_CONFIGS: Record<StepId, StepConfig> = {
         key: 'recommend',
         label: 'Product Recommendation',
         openingMessage:
-            "Based on your project details, these are the products that are suitable for your project:",
+            "Based on your project details, I'd like to recommend these top three options:",
         buildSystemPrompt: (brief, flow) => {
             const flowNote =
                 flow.id === 'quick-inquiry'

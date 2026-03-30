@@ -16,7 +16,8 @@ import type { RecommendedProduct } from '@/lib/steps/types'
 export type RagDebugInfo = {
   query: string
   industry?: string
-  filterUsed: boolean
+  filterTier: 'alias' | 'none'
+  aliasesUsed?: string[]
   products: Array<{ name: string; score: number; category: string }>
 }
 
@@ -70,15 +71,14 @@ function persistedToDisplay(m: PersistedMessage): Message {
 
 // ─── Welcome-back message builder ────────────────────────────────────────────
 
-function buildWelcomeBackMessage(brief: { customer?: { firstName?: string; lastName?: string; name?: string }; project?: { productItem?: string } } | null, stepLabel: string): Message {
+function buildWelcomeBackMessage(brief: { customer?: { firstName?: string; lastName?: string; name?: string } } | null): Message {
   const firstName = brief?.customer?.firstName || brief?.customer?.name?.split(' ')[0] || ''
-  const productItem = brief?.project?.productItem || 'your packaging project'
   const greeting = firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'
 
   return {
     id: 'recovery-welcome-back',
     role: 'assistant',
-    content: `${greeting} You were working on your packaging brief for **${productItem}**. You're currently on the **${stepLabel}** step.\n\nWould you like to continue where you left off?`,
+    content: `${greeting} You were in the middle of working on your project brief. Would you like to continue?`,
     createdAt: new Date(),
     metadata: {
       choices: [
@@ -347,10 +347,30 @@ export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
       if (choice.value === 'continue') {
         acceptRecovery()
       } else {
+        // Capture customer info before wiping — we already have their name/email
+        const savedCustomer = useBriefStore.getState().brief?.customer
+
         declineRecovery()
-        // Initialize a fresh brief and flow after declining
-        useBriefStore.getState().initializeBrief()
-        useBriefStore.getState().initFlow(flowId)
+
+        // Create a fresh brief but carry over the customer data
+        const store = useBriefStore.getState()
+        store.initializeBrief()
+        if (savedCustomer) {
+          store.updateCustomerInfo(savedCustomer)
+        }
+
+        // Skip profile step — jump straight to project-details
+        useBriefStore.setState({ currentStep: 'project-details' as StepId, currentFlow: flowId })
+
+        // Seed the conversation log with the opening message so the chat isn't blank
+        const openingMessage: PersistedMessage = {
+          id: `opening-project-details`,
+          role: 'assistant',
+          content: STEP_CONFIGS['project-details'].openingMessage,
+          createdAt: new Date().toISOString(),
+        }
+        store.appendToConversationLog([openingMessage])
+        loggedMessageIds.current.add(openingMessage.id)
       }
     },
     [acceptRecovery, declineRecovery, flowId],
@@ -362,14 +382,12 @@ export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
   // ─── Build display messages ───────────────────────────────────────────────
   const displayMessages = useMemo<Message[]>(() => {
     if (sessionRecovery === 'pending') {
-      // Show only the welcome-back message with choices
-      const stepLabel = STEP_CONFIGS[currentStep].label
-      return [buildWelcomeBackMessage(brief, stepLabel)]
+      return [buildWelcomeBackMessage(brief)]
     }
 
     // Convert persisted messages to display messages
     return conversationLog.map(persistedToDisplay)
-  }, [sessionRecovery, conversationLog, brief, currentStep])
+  }, [sessionRecovery, conversationLog, brief])
 
   return {
     messages: displayMessages,

@@ -139,11 +139,12 @@ export async function POST(req: Request) {
     const queryOpts = buildRecommendationQuery(brief)
     console.log('[recommend] RAG query:', queryOpts)
     if (queryOpts) {
-      const { products, hitCount } = await retrieveProductRecommendations({ ...queryOpts, topK: 6 })
-      console.log(`[recommend] RAG returned ${hitCount} products:`, products.map(p => p.productName))
+      const ragResult = await retrieveProductRecommendations({ ...queryOpts, topK: 6 })
+      const { products, hitCount, filterTier, aliasesUsed } = ragResult
+      console.log(`[recommend] RAG returned ${hitCount} products (filterTier=${filterTier ?? 'none'}):`, products.map(p => p.productName))
       if (products.length > 0) {
-        const ragDebugBlock = JSON.stringify({ query: queryOpts.query, industry: queryOpts.industry, filterUsed: false })
-        systemPrompt += `\n\n## Retrieved Product Recommendations\n${JSON.stringify(products, null, 2)}\n\n## RAG Debug (pass as ragDebug)\n${ragDebugBlock}\n\nPresent these products to the user by calling product_recommendations with the full products array, a brief summary, and the ragDebug object above.`
+        const ragDebugBlock = JSON.stringify({ query: queryOpts.query, industry: queryOpts.industry, filterTier: filterTier ?? 'none', aliasesUsed })
+        systemPrompt += `\n\n## Retrieved Product Recommendations\n${JSON.stringify(products, null, 2)}\n\n## RAG Debug (pass as ragDebug)\n${ragDebugBlock}\n\nPresent these products to the user by calling product_recommendations. Copy each product's fields and ADD a personalized "recommendationNote" for each based on the user's project details. Also include a brief summary and the ragDebug object above.`
       } else {
         systemPrompt += `\n\n## Retrieved Product Recommendations\nNo matching products were found in the catalog. Let the user know and suggest they describe their needs differently, or offer to skip to manual product selection.`
       }

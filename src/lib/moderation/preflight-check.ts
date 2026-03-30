@@ -1,5 +1,5 @@
 import { generateText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
+import { getModerationModel } from '@/lib/agents/model'
 import { z } from 'zod'
 
 export type ModerationCategory =
@@ -58,14 +58,14 @@ User message: ${JSON.stringify(userMessage)}`
  * Consistent with parseN8nEnv / parseRetrievalEnv patterns.
  */
 export async function moderateMessage(lastUserMessage: string): Promise<ModerationResult> {
-  if (!process.env.ANTHROPIC_API_KEY) return SAFE_RESULT
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL) return SAFE_RESULT
 
   const timeoutPromise = new Promise<ModerationResult>((resolve) =>
     setTimeout(() => resolve(SAFE_RESULT), 2000),
   )
 
   const moderationPromise = generateText({
-    model: anthropic('claude-haiku-4-5-20251001'),
+    model: getModerationModel(),
     maxOutputTokens: 60,
     prompt: buildModerationPrompt(lastUserMessage),
   })
