@@ -1,3 +1,5 @@
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {cn} from '@/lib/utils/cn';
 import {Avatar, AvatarFallback, AvatarImage} from '@/components/ui/avatar';
 import type {Message} from '@/types/conversation';
@@ -29,18 +31,57 @@ export function MessageBubble({message}: MessageBubbleProps) {
 
             <div
                 className={cn(
-                    'max-w-[80%] rounded-3xl p-5',
+                    'max-w-[80%] rounded-3xl px-5 py-3',
                     isUser
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-primary/9',
                 )}
             >
                 {!isUser && (
-                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-1 md:text-sm">
                         {usePlatformStore.getState().activeAgent}
                     </p>
                 )}
-                <p className="text-sm whitespace-pre-wrap">{content}</p>
+                <div className="text-sm leading-snug">
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            p: ({children}) => (
+                                <p className="m-0 whitespace-pre-wrap">
+                                    {children}
+                                </p>
+                            ),
+                            strong: ({children}) => (
+                                <strong className="font-semibold">
+                                    {children}
+                                </strong>
+                            ),
+                            em: ({children}) => (
+                                <em className="italic">{children}</em>
+                            ),
+                            ul: ({children}) => (
+                                <ul className="mt-1 mb-0 list-disc pl-4 space-y-0.5">
+                                    {children}
+                                </ul>
+                            ),
+                            ol: ({children}) => (
+                                <ol className="mt-1 mb-0 list-decimal pl-4 space-y-0.5">
+                                    {children}
+                                </ol>
+                            ),
+                            li: ({children}) => (
+                                <li className="leading-snug">{children}</li>
+                            ),
+                            code: ({children}) => (
+                                <code className="rounded bg-black/10 px-1 font-mono text-xs">
+                                    {children}
+                                </code>
+                            ),
+                        }}
+                    >
+                        {content}
+                    </ReactMarkdown>
+                </div>
             </div>
         </div>
     );

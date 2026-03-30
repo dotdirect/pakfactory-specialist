@@ -32,8 +32,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     if (!hasValidConfig) {
       if (process.env.NODE_ENV === 'production') {
-        throw new Error(
-          'Invalid Supabase config in production: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set and valid.'
+        console.error(
+          'SupabaseProvider: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set and valid.'
         )
       }
 

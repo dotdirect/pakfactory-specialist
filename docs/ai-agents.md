@@ -38,16 +38,16 @@ This document describes the multi-agent architecture, when to use `useChat` vs `
 - **Lives at** `/help`, API at `POST /api/chat`.
 - **Backend:** `generateText` (one question to one answer). Request body: `{ question: string }`. Response: `{ message: HelpChatMessage }`. Response cache (question hash, 1 min TTL), rate limit (30 req/min per client).
 - **Persona:** General packaging helper; answers questions, guides toward a quote.
-- **Tools:** `start_project_inquiry` (handoff to `/project-ai`). Display tools (e.g. show_packaging_options, show_moq_pricing_factors) can be added as needed.
-- **Handoff:** `start_project_inquiry` navigates the user to `/project-ai` (“Try Project AI”).
+- **Tools:** `start_project_inquiry` (handoff to `/project-brief`). Display tools (e.g. show_packaging_options, show_moq_pricing_factors) can be added as needed.
+- **Handoff:** `start_project_inquiry` navigates the user to `/project-brief` (“Start Project Brief”).
 
-### Specialist Agent
+### Brief Builder
 
-- **Lives at** `/project-ai`, API at `POST /api/project-ai/chat`.
-- **Backend:** `streamText` with `useChat` on the client. History: last 6 messages only. Rate limit; optional short-TTL stream cache (last user message + missingFields).
-- **Persona:** Dedicated brief builder; collects structured RFQ data.
-- **Tools:** `sync_project_brief`.
-- **Context:** Brief store is initialized on page load; optional `missingFields` in request body focuses the prompt on what’s still missing.
+- **Lives at** `/project-brief`, API at `POST /api/project-brief`.
+- **Backend:** `streamText` with `useChat` on the client. Step-based guided flow with structured data capture.
+- **Persona:** Dedicated brief builder; collects structured RFQ data through guided steps.
+- **Tools:** Step-specific capture tools (profile, project details, product selection, billing).
+- **Context:** Brief store is initialized on page load; step configs drive the conversation flow.
 
 ---
 
@@ -58,10 +58,8 @@ src/lib/
 ├── agents/           # Agent config — assembles tools + prompt reference
 │   ├── model.ts      # Shared getModel() factory
 │   ├── cs-agent.ts   # CS tools + config
-│   └── specialist-agent.ts
 ├── prompts/          # System prompt strings, one per agent
-│   ├── cs-agent.ts
-│   └── specialist-agent.ts
+│   └── cs-agent.ts
 ├── tools/            # One file per tool, reusable across agents
 │   ├── sync-project-brief.ts
 │   ├── start-project-inquiry.ts
@@ -69,7 +67,6 @@ src/lib/
 │   ├── show-quote-readiness.ts
 │   ├── show-moq-pricing-factors.ts
 │   └── show-timeline-guidance.ts
-├── engines/          # Botpress / Vercel AI engine abstraction
 ├── supabase/
 └── utils/
 ```
@@ -110,8 +107,8 @@ const result = streamText({
 
 ## Handoff (CS → Specialist)
 
-- **Current:** CS agent’s `start_project_inquiry` tool shows options; “Try Project AI” navigates to `/project-ai`. No code change required.
-- **Optional later:** Pass handoff context (name/company/intent) via URL params or Zustand to pre-populate the Specialist brief.
+- **Current:** CS agent’s `start_project_inquiry` tool shows options; “Start Project Brief” navigates to `/project-brief`.
+- **Optional later:** Pass handoff context (name/company/intent) via URL params or Zustand to pre-populate the brief.
 
 ---
 
@@ -121,5 +118,5 @@ After changes:
 
 1. `npm run build` — no import or type errors.
 2. `/help` chat works (CS agent).
-3. `/project-ai` chat works (Specialist agent).
-4. Handoff: “Try Project AI” in help chat navigates to `/project-ai` correctly.
+3. `/project-brief` chat works (Brief builder).
+4. Handoff: “Start Project Brief” in help chat navigates to `/project-brief` correctly.

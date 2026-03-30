@@ -42,7 +42,7 @@ export function BriefPanel({hideProgressBar = false}: BriefPanelProps) {
 
     return (
         <div className="h-full min-h-0 flex flex-col w-full">
-            <div className=" lg:px-10 xl:px-20 lg:py-8 xl:py-12 ">
+            <div className="@container px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
                 <BriefPanelHeader brief={brief} />
 
                 {!hideProgressBar && (
@@ -51,7 +51,7 @@ export function BriefPanel({hideProgressBar = false}: BriefPanelProps) {
             </div>
             <Separator />
 
-            <ScrollArea className="flex-1 min-h-0 lg:px-10 xl:px-20 lg:py-8 xl:py-10 ">
+            <ScrollArea className="flex-1 min-h-0 px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
                 <div className="space-y-4">
                     {/* <BriefPanelSectionWrapper title="Customer">
                         <CustomerCard customer={brief.customer} />

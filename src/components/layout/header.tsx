@@ -45,7 +45,7 @@ export function Header() {
 
     return (
         <header className="bg-background-alt">
-            <div className="container mx-auto flex h-20 items-center justify-between px-4">
+            <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-0">
                 <Link href="/" className="flex items-center space-x-2">
                     <Image
                         src="/assets/pakfactory-logo.png"
@@ -90,7 +90,7 @@ export function Header() {
                                     Login
                                 </Button>
                             </Link>
-                            <Link href="/project">
+                            <Link href="/project-brief">
                                 <AIGlow trigger="hover" theme="cosmic">
                                     <Button size="lg">Create Account</Button>
                                 </AIGlow>

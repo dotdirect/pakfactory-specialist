@@ -41,6 +41,7 @@ export const ProjectContextSchema = z.object({
   productLine: z.string().optional(),
   packagingStyle: z.string().optional(),
   deliveryCountry: z.string().optional(),
+  summary: z.string().optional(),
   details: z.string().optional(),
   quantity: z.array(z.coerce.number().int().positive()).optional(),
   dimensions: z
@@ -71,6 +72,7 @@ export const ProductSpecsSchema = z.object({
   materials: z.array(z.string()).optional(),
   printMethod: z.string().optional(),
   finishes: z.array(z.string()).optional(),
+  structuralAddOns: z.string().optional(),
   quantity: z.number().int().positive().optional(),
   customNotes: z.string().optional(),
 })
@@ -80,13 +82,25 @@ export const LineItemSchema = z.object({
   id: z.string().uuid(),
   productId: z.string(),
   productName: z.string(),
+  handle: z.string().optional(),
   category: z.string(),
   quantity: z.number().int().positive(),
+  quantities: z.array(z.number().int().positive()).optional(),
   specs: ProductSpecsSchema.optional(),
   imageUrl: z.string().url().optional(),
   addedAt: z.string().datetime(),
 })
 export type LineItem = z.infer<typeof LineItemSchema>
+
+/** Billing / shipping address captured in the billing step. */
+export const BillingSchema = z.object({
+  street: z.string().optional(),
+  city: z.string().optional(),
+  stateProvince: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
+})
+export type Billing = z.infer<typeof BillingSchema>
 
 export const TimelineSchema = z.object({
   urgency: z.enum(['low', 'medium', 'high', 'critical']),
@@ -118,6 +132,7 @@ export const TechnicalBriefSchema = z.object({
   timeline: TimelineSchema.optional(),
   notes: z.string().optional(),
   project: ProjectContextSchema.optional(),
+  billing: BillingSchema.optional(),
   metadata: MetadataSchema.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
