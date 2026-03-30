@@ -5,7 +5,7 @@ import {CheckCircle2} from 'lucide-react';
 import {MessageList} from '@/components/chat/message-list';
 import {BriefPanel} from '@/components/project/brief-panel';
 import {ProgressBar} from '@/components/project/progress-bar';
-import {ProjectAiChatInput} from '@/components/project/project-ai-chat-input';
+import {ChatInputBar} from '@/components/project/chat-input-bar';
 import {ProjectMobileBriefBar} from '@/components/project/project-mobile-brief-bar';
 import {ProductRecommendationCards} from '@/components/project/product-recommendation-cards';
 import {
@@ -14,19 +14,19 @@ import {
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet';
-import {useStructuredStepChat} from '@/hooks/use-structured-step-chat';
+import {useBriefChat} from '@/hooks/use-brief-chat';
 import {STEP_CONFIGS} from '@/lib/steps/step-configs';
 import {useBriefStore} from '@/stores/brief-store';
 import type {FlowId} from '@/lib/steps/types';
 import type {Message} from '@/types/conversation';
 
-interface ProjectStructuredChatPanelProps {
+interface ProjectBriefChatPanelProps {
     flowId: FlowId;
 }
 
-export function ProjectStructuredChatPanel({
+export function ProjectBriefChatPanel({
     flowId,
-}: ProjectStructuredChatPanelProps) {
+}: ProjectBriefChatPanelProps) {
     const {
         messages,
         handleSend,
@@ -37,7 +37,9 @@ export function ProjectStructuredChatPanel({
         handleRecommendationConfirm,
         handleRecommendationSkip,
         handleRequestMoreRecommendations,
-    } = useStructuredStepChat(flowId);
+        sessionRecovery,
+        handleRecoveryChoice,
+    } = useBriefChat(flowId);
     const [isBriefSheetOpen, setIsBriefSheetOpen] = useState(false);
     const brief = useBriefStore((state) => state.brief);
     const completion = useBriefStore((state) =>
@@ -93,7 +95,7 @@ export function ProjectStructuredChatPanel({
 
     return (
         <div className="flex h-full min-h-0 flex-col py-2">
-            <MessageList messages={messages} isTyping={isTyping} renderAfterMessage={renderAfterMessage} />
+            <MessageList messages={messages} isTyping={isTyping} renderAfterMessage={renderAfterMessage} onChoiceSelect={sessionRecovery === 'pending' ? handleRecoveryChoice : undefined} />
 
             <div className="shrink-0">
                 {showBriefBar && (
@@ -102,7 +104,7 @@ export function ProjectStructuredChatPanel({
                         onOpen={() => setIsBriefSheetOpen(true)}
                     />
                 )}
-                <ProjectAiChatInput onSend={handleSend} disabled={isTyping} />
+                <ChatInputBar onSend={handleSend} disabled={isTyping || sessionRecovery === 'pending'} />
             </div>
             <Sheet open={isBriefSheetOpen} onOpenChange={setIsBriefSheetOpen}>
                 <SheetContent

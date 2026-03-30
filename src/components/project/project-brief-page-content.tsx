@@ -5,7 +5,7 @@ import { DualPanelLayout } from '@/components/layout/dual-panel-layout'
 import { BriefPanel } from '@/components/project/brief-panel'
 import { BriefPanelEntrance } from '@/components/project/brief-panel-entrance'
 import { ProgressBar } from '@/components/project/progress-bar'
-import { ProjectStructuredChatPanel } from '@/components/project/project-structured-chat-panel'
+import { ProjectBriefChatPanel } from '@/components/project/project-brief-chat-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBriefStore } from '@/stores/brief-store'
 import { STEP_CONFIGS } from '@/lib/steps/step-configs'
@@ -40,13 +40,13 @@ function PageFallback() {
 function PageContent() {
   return (
     <DualPanelLayout
-      leftPanel={<ProjectStructuredChatPanel flowId="rfq-full" />}
+      leftPanel={<ProjectBriefChatPanel flowId="rfq-full" />}
       rightPanel={<RightPanel />}
     />
   )
 }
 
-export function ProjectStructuredAiPageContent() {
+export function ProjectBriefPageContent() {
   return (
     <Suspense fallback={<PageFallback />}>
       <PageContent />

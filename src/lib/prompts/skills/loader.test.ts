@@ -5,7 +5,6 @@ import {
 } from '@/lib/prompts/skills/loader'
 import {
   CsAgentSkillMarkdown,
-  SpecialistAgentSkillMarkdown,
 } from '@/lib/prompts/skills/generated'
 
 describe('prompt skill markdown loader', () => {
@@ -24,18 +23,6 @@ describe('prompt skill markdown loader', () => {
       'Conversation Rules',
       'Key Information',
     ])
-  })
-
-  it('builds specialist prompt body from markdown sections', () => {
-    const parsed = parsePromptSkillMarkdown(SpecialistAgentSkillMarkdown)
-    const prompt = buildPromptFromSkillDocument(parsed, {
-      requiredSectionTitles: ['Role', 'Mission', 'Conversation Rules', 'Packaging Context'],
-    })
-
-    expect(prompt).toContain('quote-ready project brief')
-    expect(prompt).toContain('one comprehensive question that captures all key fields for that phase')
-    expect(prompt).toContain('Do not split related required fields into separate turns')
-    expect(prompt).toContain('MOQ typically starts at 500-1000 units')
   })
 
   it('throws if required sections are missing', () => {

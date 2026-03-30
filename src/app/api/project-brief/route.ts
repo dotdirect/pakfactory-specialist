@@ -120,7 +120,7 @@ export async function POST(req: Request) {
         model: getModel(),
         system: `Respond with exactly this message verbatim, nothing else: "${message}"`,
         messages: [{ role: 'user', content: 'respond' }],
-        maxTokens: 120,
+        maxOutputTokens: 120,
       })
       return redirectResult.toUIMessageStreamResponse()
     }

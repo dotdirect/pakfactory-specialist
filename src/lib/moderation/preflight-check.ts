@@ -66,7 +66,7 @@ export async function moderateMessage(lastUserMessage: string): Promise<Moderati
 
   const moderationPromise = generateText({
     model: anthropic('claude-haiku-4-5-20251001'),
-    maxTokens: 60,
+    maxOutputTokens: 60,
     prompt: buildModerationPrompt(lastUserMessage),
   })
     .then(({ text }) => {

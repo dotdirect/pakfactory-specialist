@@ -19,7 +19,7 @@ export function BriefPanelHeader({brief}: {brief: TechnicalBrief}) {
     );
 
     return (
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 @min-[700px]:flex-row @min-[700px]:items-center @min-[700px]:justify-between">
             <div className="flex items-center gap-2">
                 <Image
                     src="/assets/pakfactory-logo.png"
@@ -31,7 +31,7 @@ export function BriefPanelHeader({brief}: {brief: TechnicalBrief}) {
                 <h2 className="text-lg text-grey-300">Project Brief</h2>
             </div>
 
-            <div className="flex items-center gap-4 text-sm md:gap-10">
+            <div className="flex items-center gap-4 text-sm @min-[700px]:gap-10">
                 <RevealOnUpdate
                     show={hasCustomerIdentity}
                     className="text-xs text-muted-foreground"
@@ -53,12 +53,12 @@ export function BriefPanelHeader({brief}: {brief: TechnicalBrief}) {
                         {email}
                     </div>
                 </RevealOnUpdate>
-                <Separator orientation="vertical" className="hidden md:block" />
+                <Separator orientation="vertical" className="hidden @min-[700px]:block" />
                 <RevealOnUpdate
                     show={true}
                     className="text-xs text-muted-foreground"
                 >
-                    <div className="hidden flex-col gap-1 md:flex">
+                    <div className="hidden flex-col gap-1 @min-[700px]:flex">
                         <span className="font-medium">Date</span>
                         {dateStr}
                     </div>

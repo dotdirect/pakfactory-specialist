@@ -90,7 +90,7 @@ export function Header() {
                                     Login
                                 </Button>
                             </Link>
-                            <Link href="/project">
+                            <Link href="/project-brief">
                                 <AIGlow trigger="hover" theme="cosmic">
                                     <Button size="lg">Create Account</Button>
                                 </AIGlow>

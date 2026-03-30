@@ -14,6 +14,85 @@ export type RagDebugData = {
   products: Array<{ name: string; score: number; category: string }>
 }
 
+export type SessionRecoveryStatus = 'pending' | 'accepted' | 'declined' | null
+
+export interface PersistedMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  createdAt: string
+}
+
+const STORAGE_KEY = 'brief-session'
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const MAX_PERSISTED_MESSAGES = 200
+
+// ─── Manual localStorage helpers ──────────────────────────────────────────────
+
+type PersistedSnapshot = {
+  version: number
+  brief: TechnicalBrief
+  currentStep: StepId
+  currentFlow: FlowId
+  conversationLog: PersistedMessage[]
+  processedToolCallIds: string[]
+}
+
+function saveSnapshot(state: BriefState): void {
+  if (!state.brief) return
+  try {
+    const snapshot: PersistedSnapshot = {
+      version: 1,
+      brief: state.brief,
+      currentStep: state.currentStep,
+      currentFlow: state.currentFlow,
+      conversationLog: state.conversationLog.slice(-MAX_PERSISTED_MESSAGES),
+      processedToolCallIds: state.processedToolCallIds,
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
+  } catch (err) {
+    console.error('[brief-store] Failed to save session:', err)
+  }
+}
+
+function loadSnapshot(): PersistedSnapshot | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const snapshot = JSON.parse(raw) as PersistedSnapshot
+    if (!snapshot?.brief?.id || !snapshot?.brief?.updatedAt) return null
+
+    // Clear submitted briefs
+    if (snapshot.brief.status === 'submitted') {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+
+    // Clear stale sessions
+    const updatedAt = new Date(snapshot.brief.updatedAt).getTime()
+    if (Date.now() - updatedAt > SESSION_MAX_AGE_MS) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+
+    return snapshot
+  } catch {
+    console.error('[brief-store] Corrupted session data, clearing.')
+    localStorage.removeItem(STORAGE_KEY)
+    return null
+  }
+}
+
+function clearSnapshot(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
 interface BriefState {
   brief: TechnicalBrief | null
   lastUpdatedField: string | null
@@ -25,6 +104,24 @@ interface BriefState {
   // ─── Structured step flow state ───────────────────────────────────────────
   currentFlow: FlowId
   currentStep: StepId
+
+  // ─── Conversation persistence ─────────────────────────────────────────────
+  conversationLog: PersistedMessage[]
+  processedToolCallIds: string[]
+  appendToConversationLog: (messages: PersistedMessage[]) => void
+
+  // ─── Session recovery ─────────────────────────────────────────────────────
+  sessionRecovery: SessionRecoveryStatus
+  setSessionRecovery: (status: SessionRecoveryStatus) => void
+  acceptRecovery: () => void
+  declineRecovery: () => void
+  clearSession: () => void
+
+  // ─── Manual persistence ─────────────────────────────────────────────────
+  /** Save current state to localStorage. Called only on step completion. */
+  persistSession: () => void
+  /** Load saved session from localStorage. Called once on mount. Returns true if a session was restored. */
+  hydrateSession: () => boolean
 
   initializeBrief: (conversationId?: string) => void
   updateCustomerInfo: (info: Partial<Customer>) => void
@@ -42,9 +139,7 @@ interface BriefState {
   getCompletionPercentage: () => number
 
   // ─── Flow navigation ──────────────────────────────────────────────────────
-  /** Initialize the flow and reset to its first step. Call on page mount. */
   initFlow: (flowId: FlowId) => void
-  /** Advance to the next step. Pass a branch override (e.g. 'product-select' | 'submit') for branching steps. */
   advanceStep: (override?: StepId | 'submit') => void
 }
 
@@ -56,8 +151,82 @@ export const useBriefStore = create<BriefState>()(
         lastUpdatedField: null,
         ragDebug: null,
         setRagDebug: (data) => set({ ragDebug: data }),
-        currentFlow: 'rfq-full',
-        currentStep: 'profile',
+        currentFlow: 'rfq-full' as FlowId,
+        currentStep: 'profile' as StepId,
+
+        // ─── Conversation persistence ──────────────────────────────────────
+        conversationLog: [],
+        processedToolCallIds: [],
+
+        appendToConversationLog: (messages) => {
+          set((state) => {
+            const existingIds = new Set(state.conversationLog.map((m) => m.id))
+            const newMessages = messages.filter((m) => !existingIds.has(m.id))
+            if (newMessages.length > 0) {
+              state.conversationLog.push(...newMessages)
+              if (state.conversationLog.length > MAX_PERSISTED_MESSAGES) {
+                state.conversationLog = state.conversationLog.slice(-MAX_PERSISTED_MESSAGES)
+              }
+            }
+          })
+        },
+
+        // ─── Session recovery ──────────────────────────────────────────────
+        sessionRecovery: null,
+        setSessionRecovery: (status) => set({ sessionRecovery: status }),
+
+        acceptRecovery: () => {
+          set({ sessionRecovery: 'accepted' })
+        },
+
+        declineRecovery: () => {
+          set((state) => {
+            state.brief = null
+            state.lastUpdatedField = null
+            state.conversationLog = []
+            state.processedToolCallIds = []
+            state.currentFlow = 'rfq-full' as FlowId
+            state.currentStep = 'profile' as StepId
+            state.sessionRecovery = 'declined'
+          })
+          clearSnapshot()
+        },
+
+        clearSession: () => {
+          set((state) => {
+            state.brief = null
+            state.lastUpdatedField = null
+            state.conversationLog = []
+            state.processedToolCallIds = []
+            state.currentFlow = 'rfq-full' as FlowId
+            state.currentStep = 'profile' as StepId
+            state.sessionRecovery = null
+          })
+          clearSnapshot()
+        },
+
+        // ─── Manual persistence ──────────────────────────────────────────────
+        persistSession: () => {
+          saveSnapshot(get())
+        },
+
+        hydrateSession: () => {
+          const snapshot = loadSnapshot()
+          if (!snapshot) return false
+
+          set((state) => {
+            state.brief = snapshot.brief
+            state.currentStep = snapshot.currentStep
+            state.currentFlow = snapshot.currentFlow
+            state.conversationLog = snapshot.conversationLog
+            state.processedToolCallIds = snapshot.processedToolCallIds
+            // Mark recovery as pending so the user is asked to continue or restart
+            if (snapshot.brief.status === 'in_progress') {
+              state.sessionRecovery = 'pending'
+            }
+          })
+          return true
+        },
 
         initializeBrief: (conversationId) => {
           set((state) => {
@@ -243,6 +412,8 @@ export const useBriefStore = create<BriefState>()(
           set((state) => {
             state.brief = null
             state.lastUpdatedField = null
+            state.conversationLog = []
+            state.processedToolCallIds = []
           })
         },
 
@@ -284,6 +455,9 @@ export const useBriefStore = create<BriefState>()(
               state.currentStep = next
             })
           }
+
+          // Persist to localStorage only on step completion
+          get().persistSession()
         },
       }))
     ),

@@ -18,7 +18,7 @@ export type ProjectInquiryOption = z.infer<typeof ProjectInquiryOptionSchema>
 export const StartProjectInquiryOutputSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
-  options: z.array(ProjectInquiryOptionSchema).min(2),
+  options: z.array(ProjectInquiryOptionSchema).min(1),
   secondaryActionLabel: z.string().min(1),
 })
 export type StartProjectInquiryOutput = z.infer<typeof StartProjectInquiryOutputSchema>
@@ -35,13 +35,8 @@ export const startProjectInquiryTool = tool({
       description: reason,
       options: [
         {
-          label: 'Continue with Botpress',
-          route: '/project?from=help-center',
-        },
-        {
-          label: 'Try Project AI',
-          route: '/project-ai?from=help-center',
-          variant: 'outline',
+          label: 'Start Project Brief',
+          route: '/project-brief?from=help-center',
         },
       ],
       secondaryActionLabel: 'Keep chatting',

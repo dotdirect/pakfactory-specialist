@@ -17,19 +17,19 @@ import {usePlatformStore} from '@/stores/platform-store';
 import {toast} from 'sonner';
 import {AgentDisclaimer} from '@/components/agent/agent-disclaimer';
 
-export interface ProjectAiChatInputProps {
+export interface ChatInputBarProps {
     onSend: (message: string) => void;
     onUpload?: (file: File) => Promise<void>;
     placeholder?: string;
     disabled?: boolean;
 }
 
-export function ProjectAiChatInput({
+export function ChatInputBar({
     onSend,
     onUpload,
     placeholder = `Ask ${usePlatformStore.getState().activeAgent} anything`,
     disabled,
-}: ProjectAiChatInputProps) {
+}: ChatInputBarProps) {
     const [value, setValue] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -191,7 +191,7 @@ export function ProjectAiChatInput({
                         placeholder={placeholder}
                         disabled={disabled || isUploading}
                         rows={1}
-                        className="min-h-[32px] max-h-40 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 text-base md:text-base focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin"
+                        className="min-h-[32px] max-h-40 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 text-sm focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin"
                         aria-label="Message input"
                     />
 

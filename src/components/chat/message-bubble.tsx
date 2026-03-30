@@ -38,11 +38,11 @@ export function MessageBubble({message}: MessageBubbleProps) {
                 )}
             >
                 {!isUser && (
-                    <p className="text-xs font-medium text-muted-foreground mb-1 md:text-base">
+                    <p className="text-xs font-medium text-muted-foreground mb-1 md:text-sm">
                         {usePlatformStore.getState().activeAgent}
                     </p>
                 )}
-                <div className="text-sm leading-snug md:text-base">
+                <div className="text-sm leading-snug">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{

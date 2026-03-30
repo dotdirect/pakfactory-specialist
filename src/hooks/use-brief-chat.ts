@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai'
 import { toast } from 'sonner'
-import { useBriefStore } from '@/stores/brief-store'
+import { useBriefStore, type PersistedMessage, type SessionRecoveryStatus } from '@/stores/brief-store'
 import { STEP_CONFIGS } from '@/lib/steps/step-configs'
 import type { FlowId, StepId } from '@/lib/steps/types'
 import type { BriefEvent } from '@/types/brief-events'
-import type { Message } from '@/types/conversation'
+import type { Message, Choice } from '@/types/conversation'
 import type { RecommendedProduct } from '@/lib/steps/types'
 
 // ─── Tool output extraction ──────────────────────────────────────────────────
@@ -50,18 +50,48 @@ export type RecommendationData = {
   messageId: string
 }
 
-function toDisplayMessage(message: UIMessage): Message {
+function toPersistedMessage(message: UIMessage): PersistedMessage {
   return {
     id: message.id,
-    role: message.role as Message['role'],
+    role: message.role as PersistedMessage['role'],
     content: message.parts.filter(isTextUIPart).map((p) => p.text).join(''),
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function persistedToDisplay(m: PersistedMessage): Message {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    createdAt: new Date(m.createdAt),
+  }
+}
+
+// ─── Welcome-back message builder ────────────────────────────────────────────
+
+function buildWelcomeBackMessage(brief: { customer?: { firstName?: string; lastName?: string; name?: string }; project?: { productItem?: string } } | null, stepLabel: string): Message {
+  const firstName = brief?.customer?.firstName || brief?.customer?.name?.split(' ')[0] || ''
+  const productItem = brief?.project?.productItem || 'your packaging project'
+  const greeting = firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'
+
+  return {
+    id: 'recovery-welcome-back',
+    role: 'assistant',
+    content: `${greeting} You were working on your packaging brief for **${productItem}**. You're currently on the **${stepLabel}** step.\n\nWould you like to continue where you left off?`,
     createdAt: new Date(),
+    metadata: {
+      choices: [
+        { id: 'continue', label: 'Yes, continue', value: 'continue' },
+        { id: 'restart', label: 'Start over', value: 'restart' },
+      ],
+    },
   }
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export type UseStructuredStepChatReturn = {
+export type UseBriefChatReturn = {
   messages: Message[]
   handleSend: (content: string) => void
   isTyping: boolean
@@ -73,18 +103,35 @@ export type UseStructuredStepChatReturn = {
   handleRecommendationConfirm: (selectedProducts: RecommendedProduct[]) => void
   handleRecommendationSkip: () => void
   handleRequestMoreRecommendations: () => void
+  sessionRecovery: SessionRecoveryStatus
+  handleRecoveryChoice: (choice: Choice) => void
 }
 
-export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatReturn {
+export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
   const brief = useBriefStore((s) => s.brief)
   const currentStep = useBriefStore((s) => s.currentStep)
   const currentFlow = useBriefStore((s) => s.currentFlow)
   const initFlow = useBriefStore((s) => s.initFlow)
-  const initializeBrief = useBriefStore((s) => s.initializeBrief)
   const handleBriefEvent = useBriefStore((s) => s.handleBriefEvent)
   const advanceStep = useBriefStore((s) => s.advanceStep)
 
-  const processedToolCallIds = useRef(new Set<string>())
+  // ─── Conversation log — from Zustand store (persisted) ──────────────────
+  const conversationLog = useBriefStore((s) => s.conversationLog)
+  const storeProcessedToolCallIds = useBriefStore((s) => s.processedToolCallIds)
+  const appendToConversationLog = useBriefStore((s) => s.appendToConversationLog)
+
+  // ─── Session recovery ──────────────────────────────────────────────────────
+  const sessionRecovery = useBriefStore((s) => s.sessionRecovery)
+  const acceptRecovery = useBriefStore((s) => s.acceptRecovery)
+  const declineRecovery = useBriefStore((s) => s.declineRecovery)
+  const clearSession = useBriefStore((s) => s.clearSession)
+  const initializeBrief = useBriefStore((s) => s.initializeBrief)
+
+  // Local ref for processed tool call IDs — seeded from store on mount
+  const processedToolCallIds = useRef(new Set<string>(storeProcessedToolCallIds))
+  // Local ref for logged message IDs — seeded from store on mount
+  const loggedMessageIds = useRef(new Set<string>(conversationLog.map((m) => m.id)))
+
   const hasSubmittedRef = useRef(false)
   const pendingNextStepRef = useRef<string | undefined>(undefined)
   const autoTriggeredSteps = useRef(new Set<string>())
@@ -95,17 +142,13 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
   const [recommendationData, setRecommendationData] = useState<RecommendationData | null>(null)
   const [ragDebug, setRagDebug] = useState<RagDebugInfo | null>(null)
 
-  // ─── Conversation log — accumulates messages across step transitions ──────
-  // useChat resets per step (for clean AI context), but the display layer
-  // shows the full running history so the user sees one continuous thread.
-  const [conversationLog, setConversationLog] = useState<Message[]>([])
-  const loggedMessageIds = useRef(new Set<string>())
-
-  // Initialize flow and brief on mount only
+  // Initialize flow on mount only (brief initialization is handled by BriefProvider)
   useEffect(() => {
     const state = useBriefStore.getState()
-    if (!state.brief) state.initializeBrief()
-    if (state.currentFlow !== flowId) state.initFlow(flowId)
+    // Only init flow if it's a fresh session (not recovering)
+    if (state.sessionRecovery !== 'pending' && state.currentFlow !== flowId) {
+      state.initFlow(flowId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -118,20 +161,24 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     const latestBrief = useBriefStore.getState().brief
     if (!latestBrief) return
 
-    fetch('/api/project-structured-ai/submit', {
+    fetch('/api/project-brief/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ brief: latestBrief }),
-    }).catch((err) => {
-      console.error('[use-structured-step-chat] lead submission failed:', err)
-      toast.error('Failed to submit your brief. Please try again.')
     })
-  }, [brief?.status])
+      .then(() => {
+        // Clean up localStorage after successful submission
+        clearSession()
+      })
+      .catch((err) => {
+        console.error('[use-brief-chat] lead submission failed:', err)
+        toast.error('Failed to submit your brief. Please try again.')
+      })
+  }, [brief?.status, clearSession])
 
   const chatId = `${flowId}-${currentStep}`
 
   // Build the opening message for this step — shown immediately, no API call needed.
-  // Recalculates when currentStep changes (chatId changes → useChat reinitializes anyway).
   const initialMessages = useMemo<UIMessage[]>(
     () => [
       {
@@ -148,16 +195,17 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     id: chatId,
     messages: initialMessages,
     transport: new DefaultChatTransport({
-      api: '/api/project-structured-ai',
+      api: '/api/project-brief',
     }),
   })
 
   // Auto-trigger the recommend step — no user input needed, just fetch products immediately.
-  // Uses setTimeout + cleanup to prevent double-fire in React StrictMode.
   useEffect(() => {
     if (currentStep !== 'recommend') return
     if (autoTriggeredSteps.current.has(currentStep)) return
     if (status !== 'ready') return
+    // Don't auto-trigger during recovery prompt
+    if (sessionRecovery === 'pending') return
 
     const timer = setTimeout(() => {
       if (autoTriggeredSteps.current.has(currentStep)) return
@@ -177,18 +225,17 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [currentStep, status, sendMessage, flowId])
+  }, [currentStep, status, sendMessage, flowId, sessionRecovery])
 
-  // Sync current step's messages into the conversation log.
-  // User messages are added immediately (always complete).
-  // Assistant messages are only added when status === 'idle' (stream finished),
-  // preventing partial streaming content from being frozen in the log.
-  // Auto-triggered messages (e.g. recommend step) are hidden from the display.
+  // Sync current step's messages into the conversation log (in the store).
   const AUTO_TRIGGER_TEXT = 'Find product recommendations for my project.'
   useEffect(() => {
+    // Don't sync messages during recovery prompt
+    if (sessionRecovery === 'pending') return
+
     const incoming = messages
       .filter((m) => m.role !== 'system')
-      .map(toDisplayMessage)
+      .map(toPersistedMessage)
       .filter((m) => !(m.role === 'user' && m.content === AUTO_TRIGGER_TEXT))
       .filter((m) => m.content.trim().length > 0)
       .filter((m) => m.role === 'user' || status === 'ready')
@@ -197,8 +244,8 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     if (newEntries.length === 0) return
 
     for (const m of newEntries) loggedMessageIds.current.add(m.id)
-    setConversationLog((prev) => [...prev, ...newEntries])
-  }, [messages, status])
+    appendToConversationLog(newEntries)
+  }, [messages, status, appendToConversationLog, sessionRecovery])
 
   // Process step tool outputs: apply events, then advance
   useEffect(() => {
@@ -216,7 +263,6 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
         }
 
         // For the recommend step with product cards: delay advancement
-        // until the user interacts with the cards
         if (recommendations && recommendations.length > 0) {
           setRecommendationData({ products: recommendations, messageId: message.id })
           if (toolRagDebug) {
@@ -227,11 +273,10 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
           continue
         }
 
-        // Advance to next step (or 'submit' for branching steps like 'recommend')
         advanceStep(nextStep as StepId | 'submit' | undefined)
       }
     }
-  }, [messages, handleBriefEvent, advanceStep])
+  }, [messages, handleBriefEvent, advanceStep, setRagDebugStore])
 
   const handleRecommendationConfirm = useCallback(
     (selectedProducts: RecommendedProduct[]) => {
@@ -296,11 +341,38 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     [sendMessage, flowId],
   )
 
+  // ─── Recovery choice handler ──────────────────────────────────────────────
+  const handleRecoveryChoice = useCallback(
+    (choice: Choice) => {
+      if (choice.value === 'continue') {
+        acceptRecovery()
+      } else {
+        declineRecovery()
+        // Initialize a fresh brief and flow after declining
+        useBriefStore.getState().initializeBrief()
+        useBriefStore.getState().initFlow(flowId)
+      }
+    },
+    [acceptRecovery, declineRecovery, flowId],
+  )
+
   const isTyping = status === 'submitted' || status === 'streaming'
   const isSubmitted = brief?.status === 'submitted'
 
+  // ─── Build display messages ───────────────────────────────────────────────
+  const displayMessages = useMemo<Message[]>(() => {
+    if (sessionRecovery === 'pending') {
+      // Show only the welcome-back message with choices
+      const stepLabel = STEP_CONFIGS[currentStep].label
+      return [buildWelcomeBackMessage(brief, stepLabel)]
+    }
+
+    // Convert persisted messages to display messages
+    return conversationLog.map(persistedToDisplay)
+  }, [sessionRecovery, conversationLog, brief, currentStep])
+
   return {
-    messages: conversationLog,
+    messages: displayMessages,
     handleSend,
     isTyping,
     currentStep,
@@ -311,5 +383,7 @@ export function useStructuredStepChat(flowId: FlowId): UseStructuredStepChatRetu
     handleRecommendationConfirm,
     handleRecommendationSkip,
     handleRequestMoreRecommendations,
+    sessionRecovery,
+    handleRecoveryChoice,
   }
 }
