@@ -12,7 +12,7 @@ const RagDebugSchema = z.object({
 }).optional()
 
 const inputSchema = z.object({
-  products: z.array(RecommendedProductSchema).min(1).max(6),
+  products: z.array(RecommendedProductSchema).min(1).max(3),
   summary: z.string().min(1),
   ragDebug: RagDebugSchema,
 })

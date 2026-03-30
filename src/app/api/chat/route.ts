@@ -225,6 +225,14 @@ Instruction:
     messages: [{ role: 'user', content: question }],
     ...csAgentConfig,
     toolChoice,
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'help-chat',
+      metadata: {
+        hasRagContext: String(ragContext.length > 0),
+        ragSourceCount: String(ragSources.length),
+      },
+    },
   })
 
   const toolResults: Array<ProjectInquiryResult | PricingCalculatorResult> = []

@@ -41,10 +41,8 @@ export function getEmbeddingModel() {
 export function getModerationModel() {
   if (useGateway()) {
     return gateway(
-      process.env.AI_MODERATION_MODEL || 'anthropic/claude-haiku-4-5-20251001',
+      process.env.AI_MODERATION_MODEL || 'google/gemini-2.5-flash-lite',
     )
   }
-  return anthropic(
-    process.env.AI_MODERATION_MODEL || 'claude-haiku-4-5-20251001',
-  )
+  return google(process.env.AI_MODERATION_MODEL || 'gemini-2.5-flash-lite')
 }

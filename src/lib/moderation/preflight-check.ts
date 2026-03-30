@@ -58,7 +58,7 @@ User message: ${JSON.stringify(userMessage)}`
  * Consistent with parseN8nEnv / parseRetrievalEnv patterns.
  */
 export async function moderateMessage(lastUserMessage: string): Promise<ModerationResult> {
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL) return SAFE_RESULT
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && !process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL) return SAFE_RESULT
 
   const timeoutPromise = new Promise<ModerationResult>((resolve) =>
     setTimeout(() => resolve(SAFE_RESULT), 2000),
@@ -68,6 +68,10 @@ export async function moderateMessage(lastUserMessage: string): Promise<Moderati
     model: getModerationModel(),
     maxOutputTokens: 60,
     prompt: buildModerationPrompt(lastUserMessage),
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'moderation',
+    },
   })
     .then(({ text }) => {
       const parsed = ModerationResponseSchema.safeParse(JSON.parse(text))

@@ -36,7 +36,6 @@ export function ProjectBriefChatPanel({
         recommendationData,
         handleRecommendationConfirm,
         handleRecommendationSkip,
-        handleRequestMoreRecommendations,
         sessionRecovery,
         handleRecoveryChoice,
     } = useBriefChat(flowId);
@@ -61,12 +60,11 @@ export function ProjectBriefChatPanel({
             const lastMessage = messages[messages.length - 1];
             if (!lastMessage || message.id !== lastMessage.id) return null;
             return (
-                <div className="ml-11">
+                <div className="ml-11 max-w-[80%]">
                     <ProductRecommendationCards
                         products={recommendationData.products}
                         onConfirm={handleRecommendationConfirm}
                         onSkip={handleRecommendationSkip}
-                        onRequestMore={handleRequestMoreRecommendations}
                         selectionMode={flowId === 'rfq-full' ? 'single' : 'multiple'}
                     />
                 </div>
@@ -77,7 +75,6 @@ export function ProjectBriefChatPanel({
             recommendationData,
             handleRecommendationConfirm,
             handleRecommendationSkip,
-            handleRequestMoreRecommendations,
         ],
     );
 

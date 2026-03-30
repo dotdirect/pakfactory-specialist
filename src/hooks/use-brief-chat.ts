@@ -103,6 +103,8 @@ export type UseBriefChatReturn = {
   handleRecommendationConfirm: (selectedProducts: RecommendedProduct[]) => void
   handleRecommendationSkip: () => void
   handleRequestMoreRecommendations: () => void
+  hasRequestedMore: boolean
+  handleRequestProjectDetails: () => void
   sessionRecovery: SessionRecoveryStatus
   handleRecoveryChoice: (choice: Choice) => void
 }
@@ -141,6 +143,7 @@ export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
   // Recommendation generative UI state
   const [recommendationData, setRecommendationData] = useState<RecommendationData | null>(null)
   const [ragDebug, setRagDebug] = useState<RagDebugInfo | null>(null)
+  const [hasRequestedMore, setHasRequestedMore] = useState(false)
 
   // Initialize flow on mount only (brief initialization is handled by BriefProvider)
   useEffect(() => {
@@ -308,11 +311,29 @@ export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
 
   const handleRequestMoreRecommendations = useCallback(() => {
     setRecommendationData(null)
+    setHasRequestedMore(true)
     pendingNextStepRef.current = undefined
     const latestBrief = useBriefStore.getState().brief
     const latestStep = useBriefStore.getState().currentStep
     sendMessage(
       { text: 'I\'d like to see more recommendations or different options.' },
+      {
+        body: {
+          stepKey: latestStep,
+          flowId,
+          briefSnapshot: latestBrief,
+        },
+      },
+    )
+  }, [sendMessage, flowId])
+
+  const handleRequestProjectDetails = useCallback(() => {
+    setRecommendationData(null)
+    pendingNextStepRef.current = undefined
+    const latestBrief = useBriefStore.getState().brief
+    const latestStep = useBriefStore.getState().currentStep
+    sendMessage(
+      { text: 'I\'d like to tell you more about my project so you can find better options.' },
       {
         body: {
           stepKey: latestStep,
@@ -401,6 +422,8 @@ export function useBriefChat(flowId: FlowId): UseBriefChatReturn {
     handleRecommendationConfirm,
     handleRecommendationSkip,
     handleRequestMoreRecommendations,
+    hasRequestedMore,
+    handleRequestProjectDetails,
     sessionRecovery,
     handleRecoveryChoice,
   }

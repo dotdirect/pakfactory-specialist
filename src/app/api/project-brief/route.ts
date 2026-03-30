@@ -139,7 +139,7 @@ export async function POST(req: Request) {
     const queryOpts = buildRecommendationQuery(brief)
     console.log('[recommend] RAG query:', queryOpts)
     if (queryOpts) {
-      const ragResult = await retrieveProductRecommendations({ ...queryOpts, topK: 6 })
+      const ragResult = await retrieveProductRecommendations({ ...queryOpts, topK: 3 })
       const { products, hitCount, filterTier, aliasesUsed } = ragResult
       console.log(`[recommend] RAG returned ${hitCount} products (filterTier=${filterTier ?? 'none'}):`, products.map(p => p.productName))
       if (products.length > 0) {
@@ -160,6 +160,15 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools,
     toolChoice: hasRecommendations ? 'required' : 'auto',
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'project-brief',
+      metadata: {
+        stepKey,
+        flowId,
+        hasRecommendations: String(hasRecommendations),
+      },
+    },
   })
 
   return textResult.toUIMessageStreamResponse()
