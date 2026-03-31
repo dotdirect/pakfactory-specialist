@@ -2,10 +2,10 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { v4 as uuidv4 } from 'uuid'
-import type { TechnicalBrief, LineItem, Customer, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus, Billing } from '@/types/brief'
+import type { TechnicalBrief, LineItem, Customer, Intent, ProductSpecs, ProjectContext, Timeline, BriefStatus, Billing, ProjectEntry } from '@/types/brief'
 import type { BriefEvent } from '@/types/brief-events'
-import type { StepId, FlowId } from '@/lib/steps/types'
-import { FLOW_CONFIGS, getNextStepInFlow } from '@/lib/steps/flow-configs'
+import type { StepId, FlowId, RecommendedProduct } from '@/lib/steps/types'
+import { FLOW_CONFIGS, getNextStepInFlow, getNextStepInLoop } from '@/lib/steps/flow-configs'
 
 export type RagDebugData = {
   query: string
@@ -37,6 +37,11 @@ type PersistedSnapshot = {
   currentFlow: FlowId
   conversationLog: PersistedMessage[]
   processedToolCallIds: string[]
+  lastRecommendations?: RecommendedProduct[] | null
+  lastRagDebug?: RagDebugData | null
+  lastRecommendationNextStep?: string | null
+  inProjectLoop?: boolean
+  currentProjectIndex?: number
 }
 
 function saveSnapshot(state: BriefState): void {
@@ -49,6 +54,11 @@ function saveSnapshot(state: BriefState): void {
       currentFlow: state.currentFlow,
       conversationLog: state.conversationLog.slice(-MAX_PERSISTED_MESSAGES),
       processedToolCallIds: state.processedToolCallIds,
+      lastRecommendations: state.lastRecommendations,
+      lastRagDebug: state.lastRagDebug,
+      lastRecommendationNextStep: state.lastRecommendationNextStep,
+      inProjectLoop: state.inProjectLoop,
+      currentProjectIndex: state.currentProjectIndex,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
   } catch (err) {
@@ -106,6 +116,11 @@ interface BriefState {
   currentFlow: FlowId
   currentStep: StepId
 
+  // ─── Multi-project loop ──────────────────────────────────────────────────
+  inProjectLoop: boolean
+  currentProjectIndex: number
+  editingProjectIndex: number | null
+
   // ─── Conversation persistence ─────────────────────────────────────────────
   conversationLog: PersistedMessage[]
   processedToolCallIds: string[]
@@ -118,8 +133,15 @@ interface BriefState {
   declineRecovery: () => void
   clearSession: () => void
 
+  // ─── Cached recommendations (survives refresh) ────────────────────────
+  lastRecommendations: RecommendedProduct[] | null
+  lastRagDebug: RagDebugData | null
+  lastRecommendationNextStep: string | null
+  setLastRecommendations: (products: RecommendedProduct[], ragDebug: RagDebugData | null, nextStep: string | undefined) => void
+  clearLastRecommendations: () => void
+
   // ─── Manual persistence ─────────────────────────────────────────────────
-  /** Save current state to localStorage. Called only on step completion. */
+  /** Save current state to localStorage. Called on step completion and when recommendations arrive. */
   persistSession: () => void
   /** Load saved session from localStorage. Called once on mount. Returns true if a session was restored. */
   hydrateSession: () => boolean
@@ -139,6 +161,12 @@ interface BriefState {
   resetBrief: () => void
   getCompletionPercentage: () => number
 
+  // ─── Multi-project actions ─────────────────────────────────────────────────
+  archiveCurrentProject: (projectEntryId: string) => void
+  clearWorkingProject: () => void
+  setEditingProjectIndex: (index: number | null) => void
+  updateArchivedProject: (index: number, updates: Partial<ProjectEntry>) => void
+
   // ─── Flow navigation ──────────────────────────────────────────────────────
   initFlow: (flowId: FlowId) => void
   advanceStep: (override?: StepId | 'submit') => void
@@ -154,6 +182,11 @@ export const useBriefStore = create<BriefState>()(
         setRagDebug: (data) => set({ ragDebug: data }),
         currentFlow: 'rfq-full' as FlowId,
         currentStep: 'profile' as StepId,
+
+        // ─── Multi-project loop ────────────────────────────────────────────
+        inProjectLoop: false,
+        currentProjectIndex: 0,
+        editingProjectIndex: null,
 
         // ─── Conversation persistence ──────────────────────────────────────
         conversationLog: [],
@@ -172,6 +205,29 @@ export const useBriefStore = create<BriefState>()(
           })
         },
 
+        // ─── Cached recommendations ─────────────────────────────────────────
+        lastRecommendations: null,
+        lastRagDebug: null,
+        lastRecommendationNextStep: null,
+
+        setLastRecommendations: (products, ragDebug, nextStep) => {
+          set((state) => {
+            state.lastRecommendations = products
+            state.lastRagDebug = ragDebug
+            state.lastRecommendationNextStep = nextStep ?? null
+          })
+          // Persist immediately — user might refresh while viewing cards
+          get().persistSession()
+        },
+
+        clearLastRecommendations: () => {
+          set((state) => {
+            state.lastRecommendations = null
+            state.lastRagDebug = null
+            state.lastRecommendationNextStep = null
+          })
+        },
+
         // ─── Session recovery ──────────────────────────────────────────────
         sessionRecovery: null,
         setSessionRecovery: (status) => set({ sessionRecovery: status }),
@@ -186,9 +242,15 @@ export const useBriefStore = create<BriefState>()(
             state.lastUpdatedField = null
             state.conversationLog = []
             state.processedToolCallIds = []
+            state.lastRecommendations = null
+            state.lastRagDebug = null
+            state.lastRecommendationNextStep = null
             state.currentFlow = 'rfq-full' as FlowId
             state.currentStep = 'profile' as StepId
             state.sessionRecovery = 'declined'
+            state.inProjectLoop = false
+            state.currentProjectIndex = 0
+            state.editingProjectIndex = null
           })
           clearSnapshot()
         },
@@ -199,9 +261,15 @@ export const useBriefStore = create<BriefState>()(
             state.lastUpdatedField = null
             state.conversationLog = []
             state.processedToolCallIds = []
+            state.lastRecommendations = null
+            state.lastRagDebug = null
+            state.lastRecommendationNextStep = null
             state.currentFlow = 'rfq-full' as FlowId
             state.currentStep = 'profile' as StepId
             state.sessionRecovery = null
+            state.inProjectLoop = false
+            state.currentProjectIndex = 0
+            state.editingProjectIndex = null
           })
           clearSnapshot()
         },
@@ -221,6 +289,11 @@ export const useBriefStore = create<BriefState>()(
             state.currentFlow = snapshot.currentFlow
             state.conversationLog = snapshot.conversationLog
             state.processedToolCallIds = snapshot.processedToolCallIds
+            state.lastRecommendations = snapshot.lastRecommendations ?? null
+            state.lastRagDebug = snapshot.lastRagDebug ?? null
+            state.lastRecommendationNextStep = snapshot.lastRecommendationNextStep ?? null
+            state.inProjectLoop = snapshot.inProjectLoop ?? false
+            state.currentProjectIndex = snapshot.currentProjectIndex ?? 0
             // Mark recovery as pending so the user is asked to continue or restart
             if (snapshot.brief.status === 'in_progress') {
               state.sessionRecovery = 'pending'
@@ -236,6 +309,7 @@ export const useBriefStore = create<BriefState>()(
               conversationId,
               status: 'draft',
               lineItems: [],
+              projects: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
@@ -403,10 +477,57 @@ export const useBriefStore = create<BriefState>()(
             case 'brief.billing.confirmed':
               actions.updateBilling(event.data)
               break
+            case 'brief.project.archived':
+              actions.archiveCurrentProject(event.data.projectEntryId)
+              break
             case 'brief.submitted':
               actions.setStatus('submitted')
               break
           }
+        },
+
+        // ─── Multi-project actions ──────────────────────────────────────────
+
+        archiveCurrentProject: (projectEntryId) => {
+          set((state) => {
+            if (!state.brief) return
+            const entry: ProjectEntry = {
+              id: projectEntryId,
+              project: state.brief.project ? { ...state.brief.project } : undefined,
+              lineItems: [...state.brief.lineItems],
+              billing: state.brief.billing ? { ...state.brief.billing } : undefined,
+              createdAt: new Date().toISOString(),
+            }
+            state.brief.projects.push(entry)
+            state.brief.updatedAt = new Date().toISOString()
+            state.lastUpdatedField = 'projects'
+          })
+        },
+
+        clearWorkingProject: () => {
+          set((state) => {
+            if (!state.brief) return
+            state.brief.project = undefined
+            state.brief.lineItems = []
+            // Billing intentionally kept — users often ship to the same address
+            state.brief.updatedAt = new Date().toISOString()
+          })
+        },
+
+        setEditingProjectIndex: (index) => {
+          set({ editingProjectIndex: index })
+        },
+
+        updateArchivedProject: (index, updates) => {
+          set((state) => {
+            if (!state.brief || index < 0 || index >= state.brief.projects.length) return
+            const entry = state.brief.projects[index]!
+            if (updates.project !== undefined) entry.project = updates.project
+            if (updates.lineItems !== undefined) entry.lineItems = updates.lineItems
+            if (updates.billing !== undefined) entry.billing = updates.billing
+            state.brief.updatedAt = new Date().toISOString()
+            state.lastUpdatedField = 'projects'
+          })
         },
 
         resetBrief: () => {
@@ -415,6 +536,12 @@ export const useBriefStore = create<BriefState>()(
             state.lastUpdatedField = null
             state.conversationLog = []
             state.processedToolCallIds = []
+            state.lastRecommendations = null
+            state.lastRagDebug = null
+            state.lastRecommendationNextStep = null
+            state.inProjectLoop = false
+            state.currentProjectIndex = 0
+            state.editingProjectIndex = null
           })
         },
 
@@ -446,14 +573,51 @@ export const useBriefStore = create<BriefState>()(
         },
 
         advanceStep: (override) => {
-          const { currentFlow, currentStep } = get()
-          const next = override ?? getNextStepInFlow(currentFlow, currentStep)
+          const { currentFlow, currentStep, inProjectLoop } = get()
+
+          // Clear cached recommendations when leaving the recommend step
+          if (currentStep === 'recommend') {
+            get().clearLastRecommendations()
+          }
+
+          let next: StepId | 'submit'
+
+          if (override) {
+            next = override
+          } else if (inProjectLoop) {
+            // When looping through additional projects, use the fixed loop sequence
+            next = getNextStepInLoop(currentStep) ?? getNextStepInFlow(currentFlow, currentStep)
+          } else {
+            next = getNextStepInFlow(currentFlow, currentStep)
+          }
+
+          // Entering the project loop: add-project → project-details
+          if (next === 'project-details' && currentStep === 'add-project') {
+            get().clearWorkingProject()
+            set((state) => {
+              state.inProjectLoop = true
+              state.currentProjectIndex = state.brief?.projects.length ?? 0
+              state.currentStep = 'project-details' as StepId
+            })
+            get().persistSession()
+            return
+          }
+
+          // Exiting the project loop: add-project → review
+          if (next === 'review' && currentStep === 'add-project') {
+            set((state) => {
+              state.inProjectLoop = false
+              state.currentStep = 'review' as StepId
+            })
+            get().persistSession()
+            return
+          }
 
           if (next === 'submit') {
             get().setStatus('submitted')
           } else {
             set((state) => {
-              state.currentStep = next
+              state.currentStep = next as StepId
             })
           }
 

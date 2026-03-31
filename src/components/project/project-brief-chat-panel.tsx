@@ -17,15 +17,17 @@ import {
 import {useBriefChat} from '@/hooks/use-brief-chat';
 import {STEP_CONFIGS} from '@/lib/steps/step-configs';
 import {useBriefStore} from '@/stores/brief-store';
-import type {FlowId} from '@/lib/steps/types';
+import type {FlowId, RecommendedProduct} from '@/lib/steps/types';
 import type {Message} from '@/types/conversation';
 
 interface ProjectBriefChatPanelProps {
     flowId: FlowId;
+    onLearnMore?: (product: RecommendedProduct) => void;
 }
 
 export function ProjectBriefChatPanel({
     flowId,
+    onLearnMore,
 }: ProjectBriefChatPanelProps) {
     const {
         messages,
@@ -36,6 +38,8 @@ export function ProjectBriefChatPanel({
         recommendationData,
         handleRecommendationConfirm,
         handleRecommendationSkip,
+        pendingChoices,
+        handleChoiceSelect,
         sessionRecovery,
         handleRecoveryChoice,
     } = useBriefChat(flowId);
@@ -52,29 +56,59 @@ export function ProjectBriefChatPanel({
             ? `${brief?.customer?.firstName ?? ''} ${brief?.customer?.lastName ?? ''}`.trim()
             : brief?.customer?.name?.trim() || 'you';
 
-    // Show product cards after the last message when recommendation data is available.
-    // The tool response may have no text (filtered from log), so we attach to the last visible message.
+    // Show generative UI after messages: dismissed recommendation cards stay anchored,
+    // review card and active recommendation cards attach to the last message.
     const renderAfterMessage = useCallback(
         (message: Message) => {
-            if (!recommendationData) return null;
             const lastMessage = messages[messages.length - 1];
-            if (!lastMessage || message.id !== lastMessage.id) return null;
-            return (
-                <div className="ml-11 max-w-[80%]">
-                    <ProductRecommendationCards
-                        products={recommendationData.products}
-                        onConfirm={handleRecommendationConfirm}
-                        onSkip={handleRecommendationSkip}
-                        selectionMode={flowId === 'rfq-full' ? 'single' : 'multiple'}
-                    />
-                </div>
-            );
+            const isLastMessage = lastMessage && message.id === lastMessage.id;
+
+            // ── Dismissed recommendation cards — anchored to their original message ──
+            if (recommendationData?.dismissed) {
+                const anchorId = recommendationData.messageId || `opening-recommend`;
+                const matchesAnchor = message.id === anchorId
+                    || message.content.includes("I'd like to recommend");
+                if (matchesAnchor) {
+                    return (
+                        <div className="ml-11 max-w-[80%] opacity-50 pointer-events-none">
+                            <ProductRecommendationCards
+                                products={recommendationData.products}
+                                onConfirm={handleRecommendationConfirm}
+                                onSkip={handleRecommendationSkip}
+                                onLearnMore={onLearnMore}
+                                selectionMode={flowId === 'rfq-full' ? 'single' : 'multiple'}
+                            />
+                        </div>
+                    );
+                }
+            }
+
+            // Everything below attaches to the last message only
+            if (!isLastMessage) return null;
+
+            // ── Active recommendation cards ─────────────────────────────────
+            if (recommendationData && !recommendationData.dismissed) {
+                return (
+                    <div className="ml-11 max-w-[80%]">
+                        <ProductRecommendationCards
+                            products={recommendationData.products}
+                            onConfirm={handleRecommendationConfirm}
+                            onSkip={handleRecommendationSkip}
+                            onLearnMore={onLearnMore}
+                            selectionMode={flowId === 'rfq-full' ? 'single' : 'multiple'}
+                        />
+                    </div>
+                );
+            }
+
+            return null;
         },
         [
             messages,
             recommendationData,
             handleRecommendationConfirm,
             handleRecommendationSkip,
+            onLearnMore,
         ],
     );
 
@@ -95,7 +129,18 @@ export function ProjectBriefChatPanel({
 
     return (
         <div className="flex h-full min-h-0 flex-col py-2">
-            <MessageList messages={messages} isTyping={isTyping} renderAfterMessage={renderAfterMessage} onChoiceSelect={sessionRecovery === 'pending' ? handleRecoveryChoice : undefined} />
+            <MessageList
+                messages={messages}
+                isTyping={isTyping}
+                renderAfterMessage={renderAfterMessage}
+                onChoiceSelect={
+                    sessionRecovery === 'pending'
+                        ? handleRecoveryChoice
+                        : pendingChoices
+                          ? handleChoiceSelect
+                          : undefined
+                }
+            />
 
             <div className="shrink-0">
                 {showBriefBar && (
@@ -104,7 +149,7 @@ export function ProjectBriefChatPanel({
                         onOpen={() => setIsBriefSheetOpen(true)}
                     />
                 )}
-                <ChatInputBar onSend={handleSend} disabled={isTyping || sessionRecovery === 'pending'} />
+                <ChatInputBar onSend={handleSend} disabled={isTyping || sessionRecovery === 'pending' || !!pendingChoices || currentStep === 'review'} />
             </div>
             <Sheet open={isBriefSheetOpen} onOpenChange={setIsBriefSheetOpen}>
                 <SheetContent
@@ -120,7 +165,12 @@ export function ProjectBriefChatPanel({
                             label={stepLabel}
                             className="mb-4"
                         />
-                        <BriefPanel hideProgressBar />
+                        <BriefPanel
+                            hideProgressBar
+                            selectedProjectIndex={null}
+                            onSelectProject={() => undefined}
+                            onEditProject={() => undefined}
+                        />
                     </div>
                 </SheetContent>
             </Sheet>

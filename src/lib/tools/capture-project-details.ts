@@ -28,7 +28,7 @@ export const INDUSTRIES = [
 const inputSchema = z.object({
   industry: z.enum(INDUSTRIES),
   productItem: z.string().min(1),
-  deliveryCountry: z.string().min(1),
+  deliveryCountry: z.string().optional(),
   annualBudget: z.coerce.number().optional(),
   notes: z.string().optional(),
   projectSummary: z.string().optional(),
@@ -38,7 +38,7 @@ const inputSchema = z.object({
 
 export const captureProjectDetailsTool = tool({
   description:
-    'Call this once you have collected the user\'s industry, what product they are packaging, and delivery country. Pass the user\'s free-form project description as projectSummary. Annual budget and additional notes are optional.',
+    'Call this once you have collected the user\'s industry and what product they are packaging. Pass the user\'s free-form project description as projectSummary. Delivery country, annual budget, and additional notes are optional.',
   inputSchema,
   execute: async (input): Promise<StepToolOutput> => {
     const result = buildSyncProjectBriefOutput({
@@ -57,14 +57,31 @@ export const captureProjectDetailsTool = tool({
 
 export const captureProjectDetailsGuidance = `
 Step: Project Details
-Goal: Invite the user to describe their project freely. Extract industry, productItem, and deliveryCountry from their description.
-- Read the user's message and extract all three required fields if present.
-- Only ask follow-up questions for required fields that are still missing. Ask all missing fields in a single grouped question.
-- Always populate projectSummary with the user's own words (verbatim or lightly paraphrased) when calling capture_project_details.
-- projectSummary is the user's project description. notes = additional context beyond the description.
-- INDUSTRY: You MUST map the user's description to the closest match from this list: ${INDUSTRIES.join(', ')}. For example: "skincare" → "Cosmetic & Skincare", "coffee beans" → "Coffee", "wine bottles" → "Wine", "clothing" → "Apparel", "tech gadgets" → "Electronics". Pick the single best match.
-- PRODUCT ITEM: This must be a short noun — the single physical item going INSIDE the packaging. Strip out any packaging types, materials, or preferences. Examples: "I need pouches for my coffee beans" → "Coffee Beans". "luxury rigid boxes for 50ml serum bottles" → "Serum Bottles". "compostable bags for chocolate bars" → "Chocolate Bars". NEVER include packaging descriptions like "in paper pouches" or "with magnetic closure" in productItem.
-Optional: annual packaging budget, additional project notes.
-When you have industry + productItem + deliveryCountry, call capture_project_details immediately.
-Do not ask for any information beyond this step's scope.
+Goal: Understand what the user is packaging so we can recommend the right product.
+Required fields: industry + productItem. Everything else is optional.
+Tone: Professional, polished, concise. Never sound robotic or overly casual.
+
+## Conversation Flow
+Ask questions ONE AT A TIME in this order. Never bundle multiple questions together.
+
+1. **Product first**: If the user hasn't said what they're packaging, ask about the product:
+   "May I ask what type of product you're looking to package?"
+2. **Product form/structure**: Once you know the product category, ask about its physical form to narrow down packaging:
+   - Skincare/cosmetics: "Are those in jars, tubes, or bottles? That helps me find the right fit."
+   - Coffee/tea: "Is this ground, whole bean, or loose leaf?"
+   - Food: "How is the product contained — cans, jars, bags, or trays?"
+   - Wine/beer/spirits: "Is this for individual bottles, multi-packs, or gift sets?"
+   - Candles: "Are these container candles, pillars, or votives?"
+   - General: "Could you tell me a bit more about the form — bottles, jars, tubes, bags?"
+   Capture the answer in the \`notes\` field.
+3. **Industry**: If you can already infer the industry from the product (e.g. "face creams" → Cosmetic & Skincare), do NOT ask — just map it. Only ask if genuinely ambiguous:
+   "Which industry are you selling this product in?"
+
+## Field Rules
+- If the user provides enough info to extract both industry and productItem, call capture_project_details immediately — skip remaining questions.
+- Always populate projectSummary with the user's own words (verbatim or lightly paraphrased).
+- INDUSTRY: Map to the closest match from: ${INDUSTRIES.join(', ')}. Examples: "skincare" → "Cosmetic & Skincare", "coffee beans" → "Coffee", "wine bottles" → "Wine", "clothing" → "Apparel".
+- PRODUCT ITEM: Short noun — the physical item INSIDE the packaging. Strip packaging types/materials. Examples: "pouches for coffee beans" → "Coffee Beans". "rigid boxes for serum bottles" → "Serum Bottles". NEVER include packaging descriptions in productItem.
+- deliveryCountry: Capture if the user mentions it, but do NOT ask for it.
+- Do not ask for any information beyond this step's scope.
 `.trim()

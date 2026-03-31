@@ -13,6 +13,7 @@ function createBaseBrief(): TechnicalBrief {
     id: randomUUID(),
     status: 'in_progress',
     lineItems: [],
+    projects: [],
     createdAt: now,
     updatedAt: now,
     customer: {

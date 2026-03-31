@@ -11,6 +11,7 @@ interface ProductRecommendationCardsProps {
     products: RecommendedProduct[];
     onConfirm: (selected: RecommendedProduct[]) => void;
     onSkip: () => void;
+    onLearnMore?: (product: RecommendedProduct) => void;
     selectionMode?: 'single' | 'multiple';
 }
 
@@ -18,6 +19,7 @@ export function ProductRecommendationCards({
     products,
     onConfirm,
     onSkip,
+    onLearnMore,
     selectionMode = 'multiple',
 }: ProductRecommendationCardsProps) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -61,11 +63,10 @@ export function ProductRecommendationCards({
                     <Card
                         key={product.productId}
                         className={cn(
-                            'flex flex-row items-start gap-4 p-4 cursor-pointer transition-all shadow-none',
+                            'flex flex-row items-start gap-4 p-4 transition-all shadow-none',
                             isSelected && ' shadow-lg',
                             !isSelected && 'bg-white/50',
                         )}
-                        onClick={() => toggleSelect(product.productId)}
                     >
                         {/* Thumbnail */}
                         <div className="shrink-0 size-20 rounded-md bg-muted flex items-center justify-center overflow-hidden">
@@ -102,15 +103,15 @@ export function ProductRecommendationCards({
                                         <span>·</span>
                                     </>
                                 )}
-                                <span>{product.category}</span>
+                                <span>{product.productLine}</span>
                             </div>
                             <p className="text-sm text-muted-foreground line-clamp-3">
                                 {product.recommendationNote ||
                                     product.description}
                             </p>
-                            <div className="flex items-center gap-3 mt-1">
+                            <div className="flex items-center gap-3 mt-5">
                                 <Button
-                                    size="sm"
+                                    size="lg"
                                     variant={isSelected ? 'default' : 'outline'}
                                     className="h-7 text-xs"
                                     onClick={(e) => {
@@ -130,7 +131,10 @@ export function ProductRecommendationCards({
                                 <button
                                     type="button"
                                     className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                                    onClick={(e) => e.stopPropagation()}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onLearnMore?.(product);
+                                    }}
                                 >
                                     Learn More
                                 </button>

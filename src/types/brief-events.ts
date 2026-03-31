@@ -51,6 +51,12 @@ export const BriefEventSchema = z.discriminatedUnion('action', [
     data: BillingSchema,
   }),
   z.object({
+    action: z.literal('brief.project.archived'),
+    data: z.object({
+      projectEntryId: z.string().uuid(),
+    }),
+  }),
+  z.object({
     action: z.literal('brief.submitted'),
     data: z.object({
       briefId: z.string().uuid(),

@@ -19,6 +19,17 @@ const inputSchema = z.object({
 
 export type { RecommendedProduct }
 
+// ─── RAG metadata cache ──────────────────────────────────────────────────────
+// The AI cannot reliably copy the large metadata object in its tool call.
+// Instead, we cache RAG products server-side and inject metadata in execute().
+
+let _ragProductCache: RecommendedProduct[] = []
+
+/** Called by the API route after RAG retrieval, before streaming. */
+export function setRagProductCache(products: RecommendedProduct[]) {
+  _ragProductCache = products
+}
+
 // ─── Tool ─────────────────────────────────────────────────────────────────────
 
 export const productRecommendationsTool = tool({
@@ -26,13 +37,20 @@ export const productRecommendationsTool = tool({
     'Call this to present product recommendations to the user. Pass the full products array from the retrieved catalog results and a brief summary of why these match.',
   inputSchema,
   execute: async (input): Promise<StepToolOutput & { recommendations: RecommendedProduct[]; ragDebug?: { query: string; industry?: string; filterTier: 'alias' | 'none'; aliasesUsed?: string[]; products: Array<{ name: string; score: number; category: string }> } }> => {
+    // Merge metadata from RAG cache — the AI only needs to pass core fields + recommendationNote
+    const metadataMap = new Map(_ragProductCache.map((p) => [p.productId, p.metadata]))
+    const enrichedProducts = input.products.map((p) => ({
+      ...p,
+      metadata: metadataMap.get(p.productId) ?? p.metadata,
+    }))
+
     return {
       title: 'Product recommendations',
       summary: input.summary,
       changedFields: [],
       appliedUpdates: [],
       events: [],
-      recommendations: input.products,
+      recommendations: enrichedProducts,
       nextStep: 'product-select',
       ragDebug: input.ragDebug ? {
         ...input.ragDebug,
@@ -50,7 +68,7 @@ Goal: Present product recommendations retrieved from the catalog to the user.
 You have been provided with a list of recommended products in the "Retrieved Product Recommendations" section below.
 IMMEDIATELY call product_recommendations with:
   - products: the array of products from the "Retrieved Product Recommendations" section, with these modifications per product:
-    - Copy all existing fields (productId, productName, handle, category, description, sku, imageUrl, score) as-is.
+    - Copy all existing fields as-is: productId, productName, handle, category, description, sku, imageUrl, score.
     - ADD a "recommendationNote" field: write 1-2 sentences explaining why THIS specific product is a great fit for the user's project. Reference their product type, industry, or specific needs mentioned in the brief. Be personal and specific — not generic.
   - summary: a one-sentence summary of why these products match the user's project
 Do NOT write any text. Do NOT describe the products. Do NOT ask questions. Just call the tool NOW.

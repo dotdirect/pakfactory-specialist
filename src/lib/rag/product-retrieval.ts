@@ -9,10 +9,12 @@ export type ProductRecommendation = {
   productName: string
   handle: string
   category: string
+  productLine: string
   description: string
   sku?: string
   imageUrl?: string
   score: number
+  metadata?: Record<string, string>
 }
 
 export type ProductRetrievalResult = {
@@ -63,12 +65,25 @@ function parseMatches(matches: PineconeMatch[]): ProductRetrievalResult {
       productName: pickString(m.metadata, ['productName', 'product_name', 'name', 'title']) ?? 'Unknown Product',
       handle: pickString(m.metadata, ['handle', 'slug', 'url']) ?? m.id,
       category: pickString(m.metadata, ['category', 'type', 'productType']) ?? 'packaging',
+      productLine: pickString(m.metadata, ['productLine', 'product_line']) ?? '',
       description: pickString(m.metadata, ['description', 'shortDescription', 'body', 'text', 'chunk_text']) ?? '',
       sku: pickString(m.metadata, ['sku', 'SKU', 'product_sku', 'variant_sku']),
       imageUrl: pickString(m.metadata, ['imageUrl', 'image_url', 'primaryImageUrl', 'image', 'thumbnail']),
       score: m.score ?? 0,
+      metadata: extractStringMetadata(m.metadata),
     }))
   return { products, hitCount: products.length }
+}
+
+function extractStringMetadata(metadata: Record<string, unknown> | undefined): Record<string, string> | undefined {
+  if (!metadata) return undefined
+  const result: Record<string, string> = {}
+  for (const [key, val] of Object.entries(metadata)) {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      result[key] = val.trim()
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined
 }
 
 function pickString(

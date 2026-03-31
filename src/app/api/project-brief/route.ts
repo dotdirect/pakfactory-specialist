@@ -6,6 +6,7 @@ import { getStepConfig } from '@/lib/steps/step-configs'
 import { getFlowConfig } from '@/lib/steps/flow-configs'
 import { moderateMessage } from '@/lib/moderation/preflight-check'
 import { retrieveProductRecommendations } from '@/lib/rag/product-retrieval'
+import { setRagProductCache } from '@/lib/tools/product-recommendations'
 import type { TechnicalBrief } from '@/types/brief'
 
 export const runtime = 'edge'
@@ -143,8 +144,14 @@ export async function POST(req: Request) {
       const { products, hitCount, filterTier, aliasesUsed } = ragResult
       console.log(`[recommend] RAG returned ${hitCount} products (filterTier=${filterTier ?? 'none'}):`, products.map(p => p.productName))
       if (products.length > 0) {
+        // Cache RAG products so the tool can inject metadata server-side
+        // (the AI doesn't need to copy the large metadata object)
+        setRagProductCache(products)
+
+        // Strip metadata from the prompt to keep it small — the tool injects it back
+        const productsForPrompt = products.map(({ metadata: _meta, ...rest }) => rest)
         const ragDebugBlock = JSON.stringify({ query: queryOpts.query, industry: queryOpts.industry, filterTier: filterTier ?? 'none', aliasesUsed })
-        systemPrompt += `\n\n## Retrieved Product Recommendations\n${JSON.stringify(products, null, 2)}\n\n## RAG Debug (pass as ragDebug)\n${ragDebugBlock}\n\nPresent these products to the user by calling product_recommendations. Copy each product's fields and ADD a personalized "recommendationNote" for each based on the user's project details. Also include a brief summary and the ragDebug object above.`
+        systemPrompt += `\n\n## Retrieved Product Recommendations\n${JSON.stringify(productsForPrompt, null, 2)}\n\n## RAG Debug (pass as ragDebug)\n${ragDebugBlock}\n\nPresent these products to the user by calling product_recommendations. Copy each product's fields and ADD a personalized "recommendationNote" for each based on the user's project details. Also include a brief summary and the ragDebug object above.`
       } else {
         systemPrompt += `\n\n## Retrieved Product Recommendations\nNo matching products were found in the catalog. Let the user know and suggest they describe their needs differently, or offer to skip to manual product selection.`
       }

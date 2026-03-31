@@ -50,7 +50,6 @@ export const captureBillingTool = tool({
         `Phone: ${input.phone}`,
       ],
       events,
-      nextStep: 'submit',
     }
   },
 })

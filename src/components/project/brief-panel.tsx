@@ -5,25 +5,31 @@ import {Separator} from '@/components/ui/separator';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {getCompletionPercentage} from '@/lib/brief-collection';
 import {useBriefStore} from '@/stores/brief-store';
-import {CustomerCard} from './customer-card';
-import {IntentCard} from '@/components/project/intent-card';
-import {LineItemList} from '@/components/project/line-item-list';
-import {TimelineCard} from '@/components/project/timeline-card';
 import {ProgressBar} from '@/components/project/progress-bar';
+import {SubmitButton} from '@/components/project/submit-button';
 import {BriefPanelHeader} from '@/components/project/brief-panel-header';
-import {BriefPanelSectionWrapper} from '@/components/project/brief-panel-section-wrapper';
-import {BriefPanelProjectDetail} from '@/components/project/brief-panel-project-detail';
-// import {SubmitButton} from './submit-button';
-import Image from 'next/image';
+import {BriefPanelBody} from '@/components/project/brief-panel-body';
+import {ProjectThumbnailRail} from '@/components/project/project-thumbnail-rail';
 
 interface BriefPanelProps {
     /** When true, do not render the progress bar (e.g. when it is shown above the panel). */
     hideProgressBar?: boolean;
+    selectedProjectIndex: number | null;
+    onSelectProject: (index: number | null) => void;
+    onEditProject: (index: number) => void;
 }
 
-export function BriefPanel({hideProgressBar = false}: BriefPanelProps) {
+export function BriefPanel({
+    hideProgressBar = false,
+    selectedProjectIndex,
+    onSelectProject,
+    onEditProject,
+}: BriefPanelProps) {
     const brief = useBriefStore((state) => state.brief);
+    const currentStep = useBriefStore((state) => state.currentStep);
+    const advanceStep = useBriefStore((state) => state.advanceStep);
     const completion = getCompletionPercentage(brief ?? null);
+    const isReviewStep = currentStep === 'review';
 
     if (!brief) {
         return (
@@ -41,36 +47,39 @@ export function BriefPanel({hideProgressBar = false}: BriefPanelProps) {
     }
 
     return (
-        <div className="h-full min-h-0 flex flex-col w-full">
-            <div className="@container px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
-                <BriefPanelHeader brief={brief} />
+        <div className="relative h-full min-h-0 flex flex-col w-full">
+            {/* Mobile rail lives inside the sheet. Desktop rail is rendered outside by RightPanel. */}
+            <ProjectThumbnailRail
+                selectedProjectIndex={selectedProjectIndex}
+                onSelectProject={onSelectProject}
+                onEditProject={onEditProject}
+                renderDesktop={false}
+                renderMobile
+            />
 
-                {!hideProgressBar && (
-                    <ProgressBar value={completion} className="mt-3 w-full" />
+            <div className="h-full min-h-0 flex flex-col w-full">
+                <div className="@container px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
+                    <BriefPanelHeader brief={brief} />
+
+                    {!hideProgressBar && (
+                        <ProgressBar value={completion} className="mt-3 w-full" />
+                    )}
+                </div>
+                <Separator />
+
+                <ScrollArea className="flex-1 min-h-0 px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
+                    <BriefPanelBody selectedProjectIndex={selectedProjectIndex} />
+                </ScrollArea>
+
+                {isReviewStep && (
+                    <>
+                        <Separator />
+                        <div className="shrink-0 px-[clamp(1rem,3vw,3.5rem)] py-4">
+                            <SubmitButton onClick={() => advanceStep('submit')} />
+                        </div>
+                    </>
                 )}
             </div>
-            <Separator />
-
-            <ScrollArea className="flex-1 min-h-0 px-[clamp(1rem,3vw,3.5rem)] py-[clamp(1rem,2vw,2.5rem)]">
-                <div className="space-y-4">
-                    {/* <BriefPanelSectionWrapper title="Customer">
-                        <CustomerCard customer={brief.customer} />
-                    </BriefPanelSectionWrapper> */}
-
-                    <BriefPanelSectionWrapper title="Project Detail">
-                        <BriefPanelProjectDetail brief={brief} />
-                    </BriefPanelSectionWrapper>
-
-                    {/* <IntentCard intent={brief.intent} />
-                    <LineItemList lineItems={brief.lineItems} />
-                    <TimelineCard timeline={brief.timeline} /> */}
-                </div>
-            </ScrollArea>
-
-            {/* <Separator />
-      <div className="p-4">
-        <SubmitButton disabled={completion < 100} />
-      </div> */}
         </div>
     );
 }

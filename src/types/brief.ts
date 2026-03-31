@@ -122,6 +122,16 @@ export const MetadataSchema = z.object({
 })
 export type Metadata = z.infer<typeof MetadataSchema>
 
+/** A completed project entry archived via the "add another project" step. */
+export const ProjectEntrySchema = z.object({
+  id: z.string().uuid(),
+  project: ProjectContextSchema.optional(),
+  lineItems: z.array(LineItemSchema).default([]),
+  billing: BillingSchema.optional(),
+  createdAt: z.string().datetime(),
+})
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>
+
 export const TechnicalBriefSchema = z.object({
   id: z.string().uuid(),
   conversationId: z.string().optional(),
@@ -129,6 +139,7 @@ export const TechnicalBriefSchema = z.object({
   customer: CustomerSchema.optional(),
   intent: IntentSchema.optional(),
   lineItems: z.array(LineItemSchema).default([]),
+  projects: z.array(ProjectEntrySchema).default([]),
   timeline: TimelineSchema.optional(),
   notes: z.string().optional(),
   project: ProjectContextSchema.optional(),

@@ -20,6 +20,14 @@ import {
     captureBillingTool,
     captureBillingGuidance,
 } from '@/lib/tools/capture-billing';
+import {
+    captureReviewTool,
+    captureReviewGuidance,
+} from '@/lib/tools/capture-review';
+import {
+    captureAddProjectTool,
+    captureAddProjectGuidance,
+} from '@/lib/tools/capture-add-project';
 import type {StepId} from './types';
 import type {FlowConfig} from './flow-configs';
 
@@ -91,13 +99,15 @@ function doNotReAsk(brief: TechnicalBrief | null): string {
 const REENGAGEMENT_QUESTIONS: Record<string, string> = {
     Profile: 'could you share your first name, last name, and email?',
     'Project Details':
-        'what product are you packaging and which country will it be delivered to?',
+        'what product are you packaging and what industry you\'re in?',
     'Product Recommendation':
         'would you like product suggestions, or prefer to go straight to submission?',
     'Product Selection':
         'which products interest you, and what quantities do you need?',
     'Billing & Contact':
         'could you share your shipping address and phone number?',
+    'Add Another Project':
+        'would you like to add another project to this quote?',
 };
 
 function stepReengagementQuestion(stepLabel: string): string {
@@ -165,7 +175,7 @@ export const STEP_CONFIGS: Record<StepId, StepConfig> = {
         key: 'project-details',
         label: 'Project Details',
         openingMessage:
-            "Great! Tell me a bit about your project — what are you packaging, what industry you're in, and where it'll be delivered? Feel free to give us a short overview and we'll take it from there.",
+            "Great! Tell me a bit about your project — what are you packaging and what industry you're in? Feel free to give us a short overview and we'll take it from there.",
         buildSystemPrompt: (brief) =>
             basePrompt(
                 'Project Details',
@@ -228,6 +238,43 @@ export const STEP_CONFIGS: Record<StepId, StepConfig> = {
             ),
         tool: captureBillingTool,
         toolName: 'capture_billing',
+    },
+
+    'add-project': {
+        key: 'add-project',
+        label: 'Add Another Project',
+        openingMessage:
+            "Your project has been saved! Would you like to **add another project** to this quote, or are you ready to review and submit?",
+        buildSystemPrompt: (brief) => {
+            const projectCount = (brief?.projects?.length ?? 0) + 1;
+            const currentProduct = brief?.project?.productItem ?? 'your project';
+            return basePrompt(
+                'Add Another Project',
+                'capture_add_project',
+                `${captureAddProjectGuidance}\n\nThe user has completed ${projectCount} project(s) so far. The current project is for "${currentProduct}".`,
+                brief,
+            );
+        },
+        tool: captureAddProjectTool,
+        toolName: 'capture_add_project',
+    },
+
+    review: {
+        key: 'review',
+        label: 'Review & Submit',
+        openingMessage:
+            "We're almost done! Please review your project brief on the right panel. You can edit any section if something needs updating. Once everything looks good, hit **Submit Brief** to send it to our team.",
+        buildSystemPrompt: (brief, flow) => {
+            const flowSteps = flow.steps.filter((s) => s !== 'review').join(', ');
+            return basePrompt(
+                'Review & Submit',
+                'capture_review',
+                `${captureReviewGuidance}\n\nThis flow collected data across these steps: ${flowSteps}. Only summarize data that exists in the brief.`,
+                brief,
+            );
+        },
+        tool: captureReviewTool,
+        toolName: 'capture_review',
     },
 };
 
