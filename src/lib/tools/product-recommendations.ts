@@ -37,12 +37,16 @@ export const productRecommendationsTool = tool({
     'Call this to present product recommendations to the user. Pass the full products array from the retrieved catalog results and a brief summary of why these match.',
   inputSchema,
   execute: async (input): Promise<StepToolOutput & { recommendations: RecommendedProduct[]; ragDebug?: { query: string; industry?: string; filterTier: 'alias' | 'none'; aliasesUsed?: string[]; products: Array<{ name: string; score: number; category: string }> } }> => {
-    // Merge metadata from RAG cache — the AI only needs to pass core fields + recommendationNote
-    const metadataMap = new Map(_ragProductCache.map((p) => [p.productId, p.metadata]))
-    const enrichedProducts = input.products.map((p) => ({
-      ...p,
-      metadata: metadataMap.get(p.productId) ?? p.metadata,
-    }))
+    // Merge metadata + imageUrl from RAG cache — the AI only needs to pass core fields + recommendationNote
+    const cacheMap = new Map(_ragProductCache.map((p) => [p.productId, p]))
+    const enrichedProducts = input.products.map((p) => {
+      const cached = cacheMap.get(p.productId)
+      return {
+        ...p,
+        metadata: cached?.metadata ?? p.metadata,
+        imageUrl: p.imageUrl || cached?.imageUrl,
+      }
+    })
 
     return {
       title: 'Product recommendations',
